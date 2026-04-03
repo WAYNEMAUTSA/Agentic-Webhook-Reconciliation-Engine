@@ -9,6 +9,8 @@ import metricsRouter from './routes/metrics';
 import anomaliesRouter from './routes/anomalies';
 import { webhookWorker } from './workers/webhookWorker';
 import { healWorker } from './workers/healWorker';
+import { startDataInjector } from './services/dataInjector';
+import injectorRouter from './routes/injector';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +33,7 @@ app.use('/mock', mockRouter);
 app.use('/transactions', transactionsRouter);
 app.use('/metrics', metricsRouter);
 app.use('/anomalies', anomaliesRouter);
+app.use('/injector', injectorRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
@@ -42,6 +45,12 @@ webhookWorker.on('ready', () => {
 
 healWorker.on('ready', () => {
   console.log('Heal worker is ready');
+  const autoStart = process.env.INJECTOR_AUTO_START === 'true';
+  startDataInjector({
+    enabled: autoStart,
+    intervalMs: Number(process.env.INJECTOR_INTERVAL_MS ?? 5000),
+    batchSize: Number(process.env.INJECTOR_BATCH_SIZE ?? 2),
+  });
 });
 
 export default app;

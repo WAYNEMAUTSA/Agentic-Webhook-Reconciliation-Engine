@@ -12,7 +12,11 @@ export default defineConfig(({ mode }) => ({
       "/api": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, ""),
       },
+    },
+    hmr: {
+      overlay: false,
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
