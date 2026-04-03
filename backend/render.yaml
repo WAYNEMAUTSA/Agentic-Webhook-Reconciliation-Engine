@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: webhook-reconciliation-backend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: UPSTASH_REDIS_URL
+        sync: false
