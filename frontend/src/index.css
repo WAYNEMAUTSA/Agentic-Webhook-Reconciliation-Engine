@@ -4,63 +4,87 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 220 33% 98%;
-    --foreground: 224 71% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
-    --primary: 231 98% 64%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 239 84% 67%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 224 71% 4%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 142 76% 36%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --info: 199 89% 48%;
-    --info-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 231 98% 64%;
-    --radius: 0.75rem;
-  }
+/* ─────────────────────────────────────────────
+   Swiss International / Helvetica Modernism
+   Design Tokens — additive layer on top of existing UI
+   ───────────────────────────────────────────── */
+:root {
+  /* Color palette */
+  --color-accent: #E8363D;
+  --color-accent-red: #E8363D;
+  --color-accent-blue-light: #4FC3F7;
+  --color-accent-blue-dark: #1565C0;
+  --color-accent-teal: #00BFA5;
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F5F6FA;
+  --color-sidebar: #1C1C2E;
+  --color-header-banner: #1C1C2E;
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #8A8A9A;
+  --color-text-white: #FFFFFF;
+  --color-border: #EBEBF0;
+  --color-chart-red: #E8363D;
+  --color-chart-blue: #4FC3F7;
+  --color-chart-teal: #00BFA5;
+  --color-chart-line: #E0E0E0;
 
-  .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 40% 98%;
-    --card: 224 71% 4%;
-    --card-foreground: 210 40% 98%;
-    --popover: 224 71% 4%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 142.1 70.6% 45.3%;
-    --success-foreground: 144.9 80.4% 10%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 48 96% 89%;
-    --info: 217.2 91.2% 59.8%;
-    --info-foreground: 222.2 47.4% 11.2%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-  }
+  /* Keep existing shadcn tokens for backward compat */
+  --background: 220 33% 98%;
+  --foreground: 224 71% 4%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 71% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71% 4%;
+  --primary: 231 98% 64%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 239 84% 67%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 220 14% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 220 14% 96%;
+  --accent-foreground: 224 71% 4%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 76% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+  --info: 199 89% 48%;
+  --info-foreground: 0 0% 100%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 231 98% 64%;
+  --radius: 0.75rem;
+  --radius-card: 6px;
+  --radius-button: 4px;
+  --radius-badge: 3px;
+
+  /* Typography */
+  --font-family: "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Helvetica Neue", Arial, sans-serif;
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-xxl: 36px;
+
+  /* Spacing */
+  --spacing-unit: 8px;
+  --card-padding: 20px 24px;
+  --section-gap: 16px;
+  --grid-gap: 16px;
+  --page-padding: 24px;
+  --sidebar-width: 56px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 4px rgba(0,0,0,0.08);
+  --shadow-dropdown: 0 4px 12px rgba(0,0,0,0.12);
+
+  /* Transitions */
+  --transition-default: all 0.2s ease;
 }
 
 @layer base {
@@ -69,71 +93,312 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    font-family: var(--font-body), system-ui, -apple-system, sans-serif;
     font-weight: 400;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
   }
 }
 
-@layer components {
-  /* Modern card with soft shadow */
-  .card-modern {
-    @apply bg-white rounded-[16px] border border-[#E5E7EB];
-    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.12);
-    transition: all 0.18s ease;
-  }
+/* ─────────────────────────────────────────────
+   Swiss International Dashboard Shell
+   ───────────────────────────────────────────── */
 
-  .card-modern:hover {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
-  }
-
-  /* Metric card base */
-  .metric-card {
-    @apply card-modern p-6;
-  }
-
-  /* Metric value with bold number weight */
-  .metric-value {
-    font-weight: 700;
-    @apply text-3xl tracking-tight;
-  }
-
-  /* Tab navigation */
-  .tab-item {
-    @apply px-0 py-3 text-sm font-medium border-b-2 transition-all;
-    transition-duration: 180ms;
-  }
-
-  .tab-item-active {
-    @apply border-[#4A5BFF] text-[#4A5BFF];
-  }
-
-  .tab-item-inactive {
-    @apply border-transparent text-[#6B7280] hover:text-[#111827];
-  }
-
-  /* Chart card */
-  .chart-card {
-    @apply card-modern p-6;
-  }
-
-  /* Log panel */
-  .log-panel {
-    @apply card-modern p-6;
-  }
-
-  /* Skeleton loading */
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
-  .skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
+/* Sidebar */
+.shell-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  height: 100vh;
+  background: var(--color-sidebar);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
 }
 
+.shell-sidebar__logo {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-red);
+  color: var(--color-text-white);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.shell-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  margin-top: 32px;
+  flex: 1;
+  padding-top: 24px;
+}
+
+.shell-sidebar__nav-item {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  transition: var(--transition-default);
+  position: relative;
+  color: #6E6E8A;
+}
+
+.shell-sidebar__nav-item:hover {
+  color: var(--color-text-white);
+  background: rgba(255,255,255,0.08);
+}
+
+.shell-sidebar__nav-item--active {
+  color: var(--color-text-white);
+}
+
+.shell-sidebar__nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: var(--color-accent-red);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Top Navigation */
+.shell-topnav {
+  height: 48px;
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border);
+  margin-left: var(--sidebar-width);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--page-padding);
+  gap: 32px;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+}
+
+.shell-topnav__item {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  padding: 12px 0;
+  border-bottom: 2px solid transparent;
+  transition: var(--transition-default);
+}
+
+.shell-topnav__item:hover {
+  color: var(--color-text-primary);
+}
+
+.shell-topnav__item--active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent-red);
+}
+
+/* Header Banner */
+.shell-header {
+  background: var(--color-header-banner);
+  margin-left: var(--sidebar-width);
+  height: 80px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--page-padding);
+  gap: 24px;
+}
+
+.shell-header__brand {
+  background: var(--color-accent-red);
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-white);
+  min-width: 120px;
+  text-align: center;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+
+.shell-header__stats {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.shell-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.shell-stat__label {
+  font-size: var(--text-xs);
+  color: #8A8A9A;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.shell-stat__value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-white);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.shell-stat__delta {
+  font-size: 11px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.shell-stat__delta--up {
+  color: var(--color-accent-teal);
+}
+
+.shell-stat__delta--down {
+  color: var(--color-accent-red);
+}
+
+/* Main Content Area */
+.shell-main {
+  background: var(--color-bg-secondary);
+  margin-left: var(--sidebar-width);
+  min-height: calc(100vh - 128px);
+  padding: var(--page-padding);
+}
+
+/* Swiss International Card */
+.qv-card {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--card-padding);
+  transition: var(--transition-default);
+}
+
+.qv-card__title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+/* Metric Card (for Dashboard) */
+.qv-metric {
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px;
+  transition: var(--transition-default);
+}
+
+.qv-metric__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+
+.qv-metric__value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.qv-metric__sub {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+/* Tab pill (red active indicator) */
+.qv-tab-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.qv-tab {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 12px;
+  transition: var(--transition-default);
+  border: none;
+  background: transparent;
+}
+
+.qv-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.qv-tab--active {
+  background: var(--color-accent-red);
+  color: var(--color-text-white);
+}
+
+/* Section label */
+.qv-section-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+/* Override existing metric-card for Swiss style */
+.metric-card {
+  background: var(--color-bg-primary) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: var(--shadow-card) !important;
+  border: none !important;
+  transition: var(--transition-default) !important;
+  padding: 16px 20px !important;
+}
+
+.metric-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12) !important;
+  transform: none !important;
+}
+
+.metric-value {
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.chart-card,
+.log-panel {
+  background: var(--color-bg-primary) !important;
+  border-radius: var(--radius-card) !important;
+  box-shadow: var(--shadow-card) !important;
+  border: none !important;
+}

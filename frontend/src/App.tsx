@@ -1,24 +1,69 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import ManualReview from './pages/ManualReview';
-import { Clock, Activity, Database, Brain } from 'lucide-react';
+import DashboardShell from './components/DashboardShell';
+import HeaderBanner from './components/HeaderBanner';
+import { Activity, Database, Brain } from 'lucide-react';
 
 type Tab = 'dashboard' | 'transactions' | 'manual-review';
 
 const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  { key: 'dashboard', label: 'Live Overview', icon: <Activity className="h-4 w-4" /> },
-  { key: 'transactions', label: 'Transactions', icon: <Database className="h-4 w-4" /> },
-  { key: 'manual-review', label: 'AI Review', icon: <Brain className="h-4 w-4" /> },
+  { key: 'dashboard', label: 'Live Overview', icon: <Activity style={{ width: 20, height: 20 }} /> },
+  { key: 'transactions', label: 'Transactions', icon: <Database style={{ width: 20, height: 20 }} /> },
+  { key: 'manual-review', label: 'AI Review', icon: <Brain style={{ width: 20, height: 20 }} /> },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [liveTime, setLiveTime] = useState(new Date());
+  const [headerStats, setHeaderStats] = useState<any[]>([]);
 
   useEffect(() => {
     const interval = setInterval(() => setLiveTime(new Date()), 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch header stats from dashboard metrics
+  useEffect(() => {
+    import('axios').then(async ({ default: axios }) => {
+      try {
+        const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
+        const res = await axios.get(`${BASE_URL}/metrics`);
+        const d = res.data;
+        setHeaderStats([
+          {
+            label: 'Drift Rate',
+            value: `${d.driftRate.toFixed(1)}%`,
+            delta: d.driftRate > 5 ? 'critical' : d.driftRate > 2 ? 'warning' : 'healthy',
+            deltaDirection: d.driftRate > 2 ? 'down' : 'up',
+          },
+          {
+            label: 'Heal Rate',
+            value: `${d.healSuccessRate.toFixed(0)}%`,
+            delta: d.healSuccessRate >= 90 ? '+excellent' : 'monitor',
+            deltaDirection: d.healSuccessRate >= 90 ? 'up' : 'down',
+          },
+          {
+            label: 'Webhooks (60m)',
+            value: (d.totalWebhooks ?? 0).toLocaleString(),
+          },
+          {
+            label: 'Open Anomalies',
+            value: d.openAnomalies ?? 0,
+            delta: (d.openAnomalies ?? 0) > 0 ? 'needs review' : 'all clear',
+            deltaDirection: (d.openAnomalies ?? 0) > 0 ? 'down' : 'up',
+          },
+          {
+            label: 'AI Recovery',
+            value: `${(d.healStats?.recoveryRate ?? 0).toFixed(0)}%`,
+            delta: `${d.healStats?.totalAgentInterventions ?? 0} interventions`,
+          },
+        ]);
+      } catch (err) {
+        console.error('Failed to fetch header stats:', err);
+      }
+    });
   }, []);
 
   const renderPage = () => {
@@ -32,54 +77,20 @@ export default function App() {
     }
   };
 
+  const headerBanner = useMemo(
+    () => <HeaderBanner brand="QuantumView" stats={headerStats} />,
+    [headerStats]
+  );
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      {/* Header */}
-      <header className="bg-white border-b border-[#E5E7EB]" style={{ height: 70 }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
-          <div className="flex items-center justify-between h-full">
-            <div>
-              <h1 className="text-2xl font-semibold text-[#111827]">
-                Quantum<span style={{ color: '#4A5BFF' }}>View</span>
-              </h1>
-              <p className="text-xs text-[#6B7280] mt-0.5">
-                Webhook Events & Payment Gateway Reconciliation
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-[#6B7280] text-sm">
-              <Clock className="h-4 w-4" />
-              <span className="font-medium tabular-nums">
-                {liveTime.toLocaleTimeString()}
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation */}
-      <nav className="bg-white border-b border-[#E5E7EB]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`tab-item flex items-center gap-2 ${
-                  activeTab === tab.key ? 'tab-item-active' : 'tab-item-inactive'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {renderPage()}
-      </main>
-    </div>
+    <DashboardShell
+      activeTab={activeTab}
+      onTabChange={(tab) => setActiveTab(tab as Tab)}
+      tabs={tabs}
+      liveTime={liveTime}
+      headerBanner={headerBanner}
+    >
+      {renderPage()}
+    </DashboardShell>
   );
 }
