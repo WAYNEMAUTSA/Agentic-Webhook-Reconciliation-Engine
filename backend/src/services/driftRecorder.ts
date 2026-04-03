@@ -53,27 +53,27 @@ export async function recordDriftSnapshot(): Promise<void> {
 
       let isDrifted = false;
 
-      // Dropped: captured without created or authorized
-      if (hasCaptured && !hasCreated) {
-        isDrifted = true;
-        dropped++;
-      }
-      if (hasCaptured && !hasAuthorized) {
+      // Dropped: captured without all expected predecessors — count ONCE per transaction
+      const missingPredecessors =
+        hasCaptured && (!hasCreated || !hasAuthorized);
+      if (missingPredecessors) {
         isDrifted = true;
         dropped++;
       }
 
-      // Out of order
-      for (let i = 1; i < events.length; i++) {
-        const prev = events[i - 1].event_type;
-        const curr = events[i].event_type;
-        if (
-          (prev === 'captured' && (curr === 'created' || curr === 'authorized')) ||
-          (prev === 'authorized' && curr === 'created')
-        ) {
-          isDrifted = true;
-          outOfOrder++;
-          break;
+      // Out of order (only check if not already flagged as dropped)
+      if (!missingPredecessors) {
+        for (let i = 1; i < events.length; i++) {
+          const prev = events[i - 1].event_type;
+          const curr = events[i].event_type;
+          if (
+            (prev === 'captured' && (curr === 'created' || curr === 'authorized')) ||
+            (prev === 'authorized' && curr === 'created')
+          ) {
+            isDrifted = true;
+            outOfOrder++;
+            break;
+          }
         }
       }
 

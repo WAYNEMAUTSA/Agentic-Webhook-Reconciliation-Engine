@@ -1,9 +1,26 @@
 export interface MetricsResponse {
-  drift_rate: number;
-  heal_success_rate: number;
-  webhooks_60min: number;
-  open_anomalies: number;
-  timestamp: string;
+  driftRate: number;
+  driftBreakdown: {
+    total: number;
+    drifted: number;
+    healthy: number;
+    dropped: number;
+    outOfOrder: number;
+    duplicates: number;
+  };
+  healStats: {
+    totalEvents: number;
+    healedEvents: number;
+    normalEvents: number;
+    totalAgentInterventions: number;
+    healed: number;
+    suppressed: number;
+    processed: number;
+    recoveryRate: number;
+  };
+  healSuccessRate: number;
+  totalWebhooks: number;
+  openAnomalies: number;
 }
 
 export interface AnomalyResponse {

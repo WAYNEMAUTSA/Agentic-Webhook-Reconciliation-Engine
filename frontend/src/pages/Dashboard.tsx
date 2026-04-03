@@ -3,7 +3,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import axios from 'axios';
 import { BASE_URL } from '../lib/api';
 import { TrendingDown, Heart, Webhook, AlertTriangle, Shield, ShieldCheck } from 'lucide-react';
-import { useToast } from '../hooks/use-toast';
+
 
 interface Metrics {
   driftRate: number;
@@ -46,7 +46,7 @@ interface HealActivity {
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [driftHistory, setDriftHistory] = useState<DriftDataPoint[]>([]);
-  const [webhookVolume, setWebhookVolume] = useState<WebhookVolume[]>([]);
+  const [webhookVolume, setWebhookVolume] = useState<WebhookVolumeData[]>([]);
   const [healActivity, setHealActivity] = useState<HealActivity[]>([]);
   const [healerHistory, setHealerHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

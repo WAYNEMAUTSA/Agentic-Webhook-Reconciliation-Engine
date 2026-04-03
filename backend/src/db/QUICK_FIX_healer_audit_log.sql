@@ -1,12 +1,12 @@
--- Migration: Add ai_metadata column to webhook_events for agent traceability
--- Run this in Supabase SQL Editor
+-- QUICK FIX: Run this ENTIRE script in Supabase SQL Editor
+-- This will fix the healer_audit_log table schema mismatch
+-- After running, restart your backend server
 
--- Add AI metadata column
-ALTER TABLE webhook_events
-  ADD COLUMN IF NOT EXISTS ai_metadata JSONB;
+-- Drop the old table with wrong schema
+DROP TABLE IF EXISTS healer_audit_log CASCADE;
 
--- Add heal_audit_log table for full reasoning trail
-CREATE TABLE IF NOT EXISTS healer_audit_log (
+-- Recreate with correct schema that the code expects
+CREATE TABLE healer_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   gateway_txn_id TEXT NOT NULL,
   gateway TEXT NOT NULL DEFAULT 'razorpay',
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS healer_audit_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Recreate indexes
 CREATE INDEX IF NOT EXISTS idx_healer_audit_gateway_txn
   ON healer_audit_log(gateway_txn_id);
 
@@ -28,3 +29,12 @@ CREATE INDEX IF NOT EXISTS idx_healer_audit_created_at
 
 CREATE INDEX IF NOT EXISTS idx_healer_audit_outcome
   ON healer_audit_log(outcome);
+
+-- Verify the table was created correctly
+SELECT 
+  column_name, 
+  data_type, 
+  is_nullable
+FROM information_schema.columns
+WHERE table_name = 'healer_audit_log'
+ORDER BY ordinal_position;

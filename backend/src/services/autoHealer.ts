@@ -3,6 +3,35 @@ import { supabase } from '../db/supabase.js';
 import { applyEvent } from './stateMachine.js';
 import { NormalizedEvent, TransactionState } from '../types/index.js';
 
+// Helper function to record healer audit trail
+async function recordAuditTrail(entry: {
+  gatewayTxnId: string;
+  gateway: string;
+  original_event_type: string;
+  healed_event_type: string;
+  outcome: string;
+  actions_taken: string[];
+  bridge_events_synthesized: number;
+  confidence_score: number;
+  reasoning_trail: string;
+}): Promise<void> {
+  try {
+    await supabase.from('healer_audit_log').insert({
+      gateway_txn_id: entry.gatewayTxnId,
+      gateway: entry.gateway,
+      original_event_type: entry.original_event_type,
+      healed_event_type: entry.healed_event_type,
+      outcome: entry.outcome,
+      actions_taken: entry.actions_taken,
+      bridge_events_synthesized: entry.bridge_events_synthesized,
+      confidence_score: entry.confidence_score,
+      reasoning_trail: entry.reasoning_trail,
+    });
+  } catch (err: any) {
+    console.error('[AutoHealerAudit] Failed to record audit trail:', err.message);
+  }
+}
+
 export async function healTransaction(
   transactionId: string,
   missingStates: string[],
@@ -147,7 +176,7 @@ export async function healTransaction(
       rawPayload: evt,
     };
 
-    await applyEvent(normalizedEvent);
+    await applyEvent(normalizedEvent, true); // skipGapDetect: polled events are already authoritative
   }
 
   // Mark heal job as resolved
@@ -158,4 +187,37 @@ export async function healTransaction(
       resolution_notes: 'Auto-healed via Razorpay gateway poll',
     })
     .eq('id', healJobId);
+
+  // Auto-resolve any open anomalies associated with this transaction
+  const { data: relatedAnomalies } = await supabase
+    .from('anomalies')
+    .select('id')
+    .eq('transaction_id', transactionId)
+    .is('resolved_at', null);
+
+  if (relatedAnomalies && relatedAnomalies.length > 0) {
+    await supabase
+      .from('anomalies')
+      .update({
+        resolved_at: new Date().toISOString(),
+        resolution_notes: `Auto-resolved: Heal job successfully fixed transaction states`,
+      })
+      .eq('transaction_id', transactionId)
+      .is('resolved_at', null);
+
+    console.log(`[AutoHealer] Auto-resolved ${relatedAnomalies.length} anomalies for transaction ${transactionId}`);
+  }
+
+  // Record in healer_audit_log for AI Recovery Rate tracking
+  await recordAuditTrail({
+    gatewayTxnId,
+    gateway: txn.gateway || 'razorpay',
+    original_event_type: missingStates.join(','),
+    healed_event_type: sortedEvents.length > 0 ? sortedEvents[sortedEvents.length - 1].event_type : 'unknown',
+    outcome: 'healed',
+    actions_taken: [`Detected missing states: ${missingStates.join(', ')}`, `Fetched from gateway`, `Injected ${missingStates.length} events`],
+    bridge_events_synthesized: missingStates.length,
+    confidence_score: 0.92,
+    reasoning_trail: `Auto-healed via gateway poll. Missing states (${missingStates.join(', ')}) were injected from authoritative gateway data.`,
+  });
 }

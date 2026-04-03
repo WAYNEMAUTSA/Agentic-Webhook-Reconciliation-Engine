@@ -49,7 +49,7 @@ export function Overview() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               <span className="text-2xl font-bold">
-                {metrics?.drift_rate ?? "—"}
+                {metrics?.driftRate != null ? `${metrics.driftRate}%` : "—"}
               </span>
             </div>
           </CardContent>
@@ -64,8 +64,8 @@ export function Overview() {
             <div className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-success" />
               <span className="text-2xl font-bold">
-                {metrics?.heal_success_rate != null
-                  ? `${metrics.heal_success_rate}%`
+                {metrics?.healSuccessRate != null
+                  ? `${metrics.healSuccessRate}%`
                   : "—"}
               </span>
             </div>
@@ -80,7 +80,7 @@ export function Overview() {
           <CardContent>
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold">
-                {metrics?.webhooks_60min ?? "—"}
+                {metrics?.totalWebhooks?.toLocaleString() ?? "—"}
               </span>
             </div>
           </CardContent>
@@ -95,7 +95,7 @@ export function Overview() {
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-warning" />
               <span className="text-2xl font-bold">
-                {metrics?.open_anomalies ?? "—"}
+                {metrics?.openAnomalies ?? "—"}
               </span>
             </div>
           </CardContent>

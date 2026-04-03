@@ -3,30 +3,97 @@ import { healQueue } from '../queues/index.js';
 import { NormalizedEvent } from '../types/index.js';
 import { getMissingStates } from './gapDetector.js';
 
-export async function applyEvent(event: NormalizedEvent): Promise<void> {
+// Canonical lifecycle order for state-advancement guard
+const LIFECYCLE_ORDER = [
+  'initiated',
+  'created',
+  'authorized',
+  'captured',
+  'settled',
+];
+
+function lifecycleIndex(state: string): number {
+  return LIFECYCLE_ORDER.indexOf(state);
+}
+
+/**
+ * Apply an event to the state machine.
+ *
+ * @param event         - The normalized event to apply.
+ * @param skipGapDetect - When true (bridge events only) we skip gap-detection
+ *                        and heal-job creation so bridge events don't
+ *                        recursively spawn more heal jobs for themselves.
+ */
+export async function applyEvent(
+  event: NormalizedEvent,
+  skipGapDetect = false,
+): Promise<void> {
   // Step 1: Upsert into transactions table
-  const { data: txnData, error: txnError } = await supabase
+  // We only advance current_state if the incoming event is at the same or
+  // later position in the lifecycle than the existing state.
+  const { data: existingTxn } = await supabase
     .from('transactions')
-    .upsert(
-      {
+    .select('id, current_state, amount')
+    .eq('gateway', event.gateway)
+    .eq('gateway_txn_id', event.gatewayTxnId)
+    .maybeSingle();
+
+  let transactionId: string;
+
+  if (!existingTxn) {
+    // Brand new transaction — insert
+    const { data: inserted, error: insertError } = await supabase
+      .from('transactions')
+      .insert({
         gateway: event.gateway,
         gateway_txn_id: event.gatewayTxnId,
         current_state: event.eventType,
         amount: event.amount,
         currency: event.currency,
-      },
-      {
-        onConflict: 'gateway,gateway_txn_id',
+      })
+      .select('id')
+      .single();
+
+    if (insertError) {
+      // Race condition: another request inserted first — re-fetch
+      const { data: reFetched } = await supabase
+        .from('transactions')
+        .select('id, current_state')
+        .eq('gateway', event.gateway)
+        .eq('gateway_txn_id', event.gatewayTxnId)
+        .single();
+
+      if (!reFetched) {
+        throw new Error(`Failed to insert or find transaction: ${insertError.message}`);
       }
-    )
-    .select('id')
-    .single();
+      transactionId = reFetched.id;
+    } else {
+      transactionId = inserted!.id;
+    }
+  } else {
+    transactionId = existingTxn.id;
 
-  if (txnError) {
-    throw new Error(`Failed to upsert transaction: ${txnError.message}`);
+    // Only advance state if incoming event is ≥ current state in lifecycle
+    const currentIdx = lifecycleIndex(existingTxn.current_state);
+    const incomingIdx = lifecycleIndex(event.eventType);
+
+    const shouldAdvance =
+      // Unknown / terminal states always update
+      currentIdx === -1 ||
+      incomingIdx === -1 ||
+      incomingIdx >= currentIdx;
+
+    if (shouldAdvance) {
+      await supabase
+        .from('transactions')
+        .update({
+          current_state: event.eventType,
+          amount: event.amount > 0 ? event.amount : existingTxn.amount ?? event.amount,
+          currency: event.currency,
+        })
+        .eq('id', transactionId);
+    }
   }
-
-  const transactionId = txnData.id;
 
   // Step 2: Insert into webhook_events (idempotent)
   const { error: eventError } = await supabase
@@ -49,13 +116,14 @@ export async function applyEvent(event: NormalizedEvent): Promise<void> {
     throw new Error(`Failed to insert webhook_event: ${eventError.message}`);
   }
 
-  // Step 3: Check for missing predecessor states
+  // Step 3: Skip gap detection for bridge / synthetic events
+  if (skipGapDetect) return;
+
+  // Step 4: Check for missing predecessor states
   const missingStates = await getMissingStates(transactionId, event.eventType);
 
-  // Step 4a: No missing states — ledger is already up to date
-  if (missingStates.length === 0) {
-    return;
-  }
+  // Step 4a: No missing states — ledger is up to date
+  if (missingStates.length === 0) return;
 
   // Step 4b: Missing states detected — create a heal job
   const { data: healData, error: healError } = await supabase
@@ -87,7 +155,7 @@ export async function applyEvent(event: NormalizedEvent): Promise<void> {
 
   if (updateError) {
     throw new Error(
-      `Failed to update transaction state to unknown: ${updateError.message}`
+      `Failed to update transaction state to unknown: ${updateError.message}`,
     );
   }
 }

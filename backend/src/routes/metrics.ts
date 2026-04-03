@@ -50,19 +50,17 @@ router.get('/', async (_req: Request, res: Response) => {
           const hasAuthorized = eventTypes.includes('authorized');
           const hasCaptured = eventTypes.includes('captured');
 
-          // Dropped: captured without created or authorized
-          if (hasCaptured && !hasCreated) {
-            driftedCount++;
-            droppedCount++;
-            continue;
-          }
-          if (hasCaptured && !hasAuthorized) {
+          // Dropped: captured without all predecessors — count ONCE per transaction
+          const missingPredecessors =
+            hasCaptured && (!hasCreated || !hasAuthorized);
+          if (missingPredecessors) {
             driftedCount++;
             droppedCount++;
             continue;
           }
 
           // Check for out-of-order events
+          let flaggedOoo = false;
           for (let i = 1; i < events.length; i++) {
             const prev = events[i - 1].event_type;
             const curr = events[i].event_type;
@@ -71,9 +69,9 @@ router.get('/', async (_req: Request, res: Response) => {
               (prev === 'authorized' && curr === 'created')
             ) {
               outOfOrderCount++;
-              if (!eventTypes.includes('drifted_flagged')) {
+              if (!flaggedOoo) {
                 driftedCount++;
-                eventTypes.push('drifted_flagged' as any);
+                flaggedOoo = true;
               }
               break;
             }
@@ -126,12 +124,13 @@ router.get('/', async (_req: Request, res: Response) => {
       .select('*', { count: 'exact', head: true })
       .is('resolved_at', null);
 
-    // ── Healer stats ──
+    // ── Healer stats: count from healer_audit_log for accurate numbers ──
+    // Using healer_audit_log is more reliable than filtering raw_payload JSONB
+    // because bridge/synthetic events store a different payload structure.
     const { count: healedEvents } = await supabase
-      .from('webhook_events')
+      .from('healer_audit_log')
       .select('*', { count: 'exact', head: true })
-      .not('raw_payload', 'is', null)
-      .contains('raw_payload', { healed: true });
+      .eq('outcome', 'healed');
 
     const { count: totalEvents } = await supabase
       .from('webhook_events')

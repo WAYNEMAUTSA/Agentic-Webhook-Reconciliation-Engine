@@ -9,7 +9,8 @@
     "dev": "tsx src/index.ts",
     "injector:start": "tsx src/scripts/randomInjector.ts start",
     "injector:stop": "tsx src/scripts/randomInjector.ts stop",
-    "injector:status": "tsx src/scripts/randomInjector.ts status"
+    "injector:status": "tsx src/scripts/randomInjector.ts status",
+    "inject:test-data": "tsx src/scripts/injectTestData.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",

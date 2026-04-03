@@ -88,6 +88,25 @@ export async function chaosHealer(ctx: ChaosContext): Promise<HealResult> {
 
   logStep('Worker', `Received Webhook ID: ${gatewayTxnId} | Event: ${incomingEventType}`);
 
+  // Guard: if event type is unknown/unmapped, skip healing and let it pass through as-is
+  if (!incomingEventType || incomingEventType === ('unknown' as any)) {
+    logStep('Agent', `WARN: Unknown event type for ${gatewayTxnId} — skipping chaos healing, passing through.`);
+    return {
+      status: 'processed',
+      events_processed: 0,
+      bridge_events_synthesized: 0,
+      agent_log: `Skipped: unknown event type for ${gatewayTxnId}`,
+      reasoning_trail: 'Unknown event type could not be mapped to lifecycle state.',
+      suppressed: true,
+      ai_metadata: {
+        healed: false,
+        outcome: 'suppressed',
+        reason: 'unknown_event_type',
+        confidence_score: 0,
+      },
+    };
+  }
+
   const reasoningSteps: string[] = [];
   const actions: string[] = [];
   let bridgeEventsSynthesized = 0;
@@ -159,8 +178,8 @@ export async function chaosHealer(ctx: ChaosContext): Promise<HealResult> {
       reasoningSteps.push('Out-of-order detection: "captured" event arrived as first event without "created" or "authorized" predecessors.');
       reasoningSteps.push('Bridge synthesis: created → authorized → captured to restore lifecycle integrity.');
 
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery');
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'authorized', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery');
+      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 4);
+      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'authorized', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 2);
       bridgeEventsSynthesized = 2;
       actions.push('Synthesized "created" bridge event (out-of-order recovery)');
       actions.push('Synthesized "authorized" bridge event (out-of-order recovery)');
@@ -170,7 +189,7 @@ export async function chaosHealer(ctx: ChaosContext): Promise<HealResult> {
       reasoningSteps.push('Out-of-order detection: "authorized" arrived without "created" predecessor.');
       reasoningSteps.push('Bridge synthesis: created → authorized to restore lifecycle integrity.');
 
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery');
+      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 2);
       bridgeEventsSynthesized = 1;
       actions.push('Synthesized "created" bridge event (out-of-order recovery)');
     }
@@ -341,8 +360,10 @@ async function synthesizeBridgeEvent(
   rawPayload: unknown,
   mainEventTimestamp: Date,
   reason: string,
+  offsetSeconds = 2,
 ): Promise<void> {
-  const syntheticTimestamp = new Date(mainEventTimestamp.getTime() - 1000);
+  // Place bridge timestamp slightly before the main event so ordering is correct
+  const syntheticTimestamp = new Date(mainEventTimestamp.getTime() - offsetSeconds * 1000);
 
   const syntheticEvent: NormalizedEvent = {
     gatewayTxnId,
@@ -360,7 +381,8 @@ async function synthesizeBridgeEvent(
     },
   };
 
-  await applyEvent(syntheticEvent);
+  // skipGapDetect=true prevents bridge events from spawning their own heal jobs
+  await applyEvent(syntheticEvent, true);
 }
 
 /**
@@ -378,7 +400,7 @@ async function recordAuditTrail(entry: {
   reasoning_trail: string;
 }): Promise<void> {
   try {
-    await supabase.from('healer_audit_log').insert({
+    const { error } = await supabase.from('healer_audit_log').insert({
       gateway_txn_id: entry.gatewayTxnId,
       gateway: entry.gateway,
       original_event_type: entry.original_event_type,
@@ -389,9 +411,18 @@ async function recordAuditTrail(entry: {
       confidence_score: entry.confidence_score,
       reasoning_trail: entry.reasoning_trail,
     });
+    
+    if (error) {
+      console.error('[HealerAudit] Failed to record audit trail:', error.message);
+      console.error('[HealerAudit] Detail:', JSON.stringify(error));
+      console.error('[HealerAudit] Entry attempted:', JSON.stringify(entry));
+    } else {
+      console.log(`[HealerAudit] Successfully recorded: outcome=${entry.outcome}, txn=${entry.gatewayTxnId}`);
+    }
   } catch (err: any) {
     // Don't crash the pipeline if audit logging fails
     console.error('[HealerAudit] Failed to record audit trail:', err.message);
+    console.error('[HealerAudit] Entry attempted:', JSON.stringify(entry));
   }
 }
 
