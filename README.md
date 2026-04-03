@@ -1,14 +1,3 @@
-@SydneyPanasheRikoma ➜ /workspaces/quantumview-ignisia (main) $ git add -A && git commit -m "Remove Lovable branding and update README"
-On branch main
-Your branch is ahead of 'origin/main' by 3 commits.
-  (use "git push" to publish your local commits)
-
-nothing to commit, working tree clean# Webhook Reconciliation System
-
-A production-ready microservice that ingests payment gateway webhooks (Razorpay, Stripe, Cashfree), detects out-of-order or missing events, auto-heals ledger gaps by polling the gateway API, and exposes a real-time dashboard to monitor drift rate, heal success rate, and manual review queue.
-
----
-
 ## Problem Statement
 
 Payment gateways emit webhooks for each state change (created -> captured -> settled -> refunded). In real-world conditions:
