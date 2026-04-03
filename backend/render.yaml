@@ -2,6 +2,7 @@ services:
   - type: web
     name: webhook-reconciliation-backend
     env: node
+    rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
@@ -10,4 +11,14 @@ services:
       - key: SUPABASE_SERVICE_KEY
         sync: false
       - key: UPSTASH_REDIS_URL
+        sync: false
+  - type: static
+    name: webhook-reconciliation-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
         sync: false
