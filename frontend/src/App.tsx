@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import ManualReview from './pages/ManualReview';
-import { Clock, Activity, Database, ClipboardCheck } from 'lucide-react';
+import { Clock, Activity, Database, Brain } from 'lucide-react';
 
 type Tab = 'dashboard' | 'transactions' | 'manual-review';
 
 const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'dashboard', label: 'Live Overview', icon: <Activity className="h-4 w-4" /> },
   { key: 'transactions', label: 'Transactions', icon: <Database className="h-4 w-4" /> },
-  { key: 'manual-review', label: 'Manual Review', icon: <ClipboardCheck className="h-4 w-4" /> },
+  { key: 'manual-review', label: 'AI Review', icon: <Brain className="h-4 w-4" /> },
 ];
 
 export default function App() {

@@ -33,7 +33,7 @@ app.use('/webhook', webhookRouter);
 app.use('/mock', mockRouter);
 app.use('/transactions', transactionsRouter);
 app.use('/metrics', metricsRouter);
-app.use('/anomalies', anomaliesRouter);
+app.use('/anomalies', anomaliesRouter); // Includes POST /anomalies/auto-handle
 app.use('/injector', injectorRouter);
 
 app.listen(PORT, () => {
@@ -46,12 +46,9 @@ webhookWorker.on('ready', () => {
 
 healWorker.on('ready', () => {
   console.log('Heal worker is ready');
-  const autoStart = process.env.INJECTOR_AUTO_START === 'true';
-  startDataInjector({
-    enabled: autoStart,
-    intervalMs: Number(process.env.INJECTOR_INTERVAL_MS ?? 5000),
-    batchSize: Number(process.env.INJECTOR_BATCH_SIZE ?? 2),
-  });
+
+  // Start data injector (enabled by default in config)
+  startDataInjector();
 
   // Start drift snapshot recorder — every 10 seconds
   setInterval(async () => {

@@ -4,8 +4,8 @@ import { NormalizedEvent } from '../types/index.js';
 import { getMissingStates } from './gapDetector.js';
 
 // Canonical lifecycle order for state-advancement guard
+// Note: 'initiated' excluded — not emitted by webhooks
 const LIFECYCLE_ORDER = [
-  'initiated',
   'created',
   'authorized',
   'captured',
@@ -147,15 +147,10 @@ export async function applyEvent(
     healJobId: healData.id,
   });
 
-  // Mark the transaction state as unknown since we have gaps
-  const { error: updateError } = await supabase
-    .from('transactions')
-    .update({ current_state: 'unknown' })
-    .eq('id', transactionId);
-
-  if (updateError) {
-    throw new Error(
-      `Failed to update transaction state to unknown: ${updateError.message}`,
-    );
-  }
+  // NOTE: We intentionally do NOT set the transaction to 'unknown' here.
+  // The transaction keeps its current best-known state in the lifecycle.
+  // When the heal worker injects missing events, applyEvent will properly
+  // advance the state through the canonical lifecycle order.
+  // Setting 'unknown' caused UI issues where healed transactions stayed
+  // labeled as "Unknown" even after being fully reconciled.
 }

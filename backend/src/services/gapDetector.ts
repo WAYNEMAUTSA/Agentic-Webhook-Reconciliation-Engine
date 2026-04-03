@@ -2,8 +2,9 @@ import { supabase } from '../db/supabase.js';
 import { TransactionState } from '../types/index.js';
 
 // The expected order of lifecycle states for a healthy transaction
+// Note: 'initiated' is excluded — it's an internal state that webhooks never produce.
+// Real Razorpay webhooks start with 'payment.created'.
 const LIFECYCLE_ORDER: TransactionState[] = [
-  'initiated',
   'created',
   'authorized',
   'captured',

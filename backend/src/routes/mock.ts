@@ -4,17 +4,17 @@ import axios from 'axios';
 const router = Router();
 
 // ─── Route A: GET /mock/razorpay/:txnId/fetch ───────────────────────────
+// Simulates a real payment gateway with realistic failure modes
+// ~25% chance of 503 outage, ~15% chance of conflict, ~60% success
 router.get('/razorpay/:txnId/fetch', async (req: Request, res: Response) => {
   const txnId = Array.isArray(req.params.txnId)
     ? req.params.txnId[0]
     : req.params.txnId;
 
-  // Simulate gateway outage
+  // Explicit override via txnId suffix for testing
   if (txnId.endsWith('503')) {
     return res.status(503).json({ error: 'gateway outage' });
   }
-
-  // Simulate state conflict
   if (txnId.endsWith('conflict')) {
     return res.status(200).json({
       status: 'conflict',
@@ -27,7 +27,28 @@ router.get('/razorpay/:txnId/fetch', async (req: Request, res: Response) => {
     });
   }
 
-  // Normal success path
+  // Random failure simulation for realistic anomaly generation
+  const rand = Math.random();
+
+  // 25% chance of gateway outage (creates anomaly requiring AI review)
+  if (rand < 0.25) {
+    return res.status(503).json({ error: 'gateway temporarily unavailable' });
+  }
+
+  // 15% chance of state conflict (creates conflict anomaly)
+  if (rand < 0.40) {
+    return res.status(200).json({
+      status: 'conflict',
+      transaction: {
+        id: txnId,
+        ledger_state: 'captured',
+        gateway_state: 'failed',
+        events: [],
+      },
+    });
+  }
+
+  // 60% success — normal response with full event history
   return res.status(200).json({
     status: 'success',
     transaction: {

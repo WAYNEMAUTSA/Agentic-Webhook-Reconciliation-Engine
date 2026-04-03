@@ -22,9 +22,9 @@ interface Transaction {
 
 const stateColors: Record<string, string> = {
   initiated: 'bg-blue-100 text-blue-700',
-  processing: 'bg-purple-100 text-purple-700',
-  unknown: 'bg-amber-100 text-amber-700',
-  healing: 'bg-orange-100 text-orange-700',
+  created: 'bg-indigo-100 text-indigo-700',
+  authorized: 'bg-purple-100 text-purple-700',
+  captured: 'bg-emerald-100 text-emerald-700',
   settled: 'bg-green-100 text-green-700',
   failed: 'bg-red-100 text-red-700',
   refunded: 'bg-indigo-100 text-indigo-700',
@@ -91,7 +91,7 @@ export default function Transactions() {
             className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
           >
             <option value="">All States</option>
-            {['initiated', 'processing', 'unknown', 'healing', 'settled', 'failed', 'refunded'].map((s) => (
+            {['initiated', 'created', 'authorized', 'captured', 'settled', 'failed', 'refunded'].map((s) => (
               <option key={s} value={s}>
                 {s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
@@ -136,7 +136,9 @@ export default function Transactions() {
               {transactions.map((tx) => {
                 const events = tx.webhook_events || [];
                 const status = events.length > 0 ? events[events.length - 1].event_type : tx.current_state;
-                const isHealing = status === 'unknown' || status === 'healing';
+                // Skip 'unknown' states — use the actual current_state instead
+                const displayStatus = status === 'unknown' ? tx.current_state || 'captured' : status;
+                const isHealing = displayStatus === 'healing';
 
                 return (
                   <tr key={tx.id} className={isHealing ? 'bg-amber-50' : 'hover:bg-gray-50'}>
@@ -155,19 +157,23 @@ export default function Transactions() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1 items-center">
-                        {events.map((evt, i) => (
+                        {events.map((evt, i) => {
+                          // Skip unknown event types from display
+                          if (evt.event_type === 'unknown') return null;
+                          return (
                           <div key={i} className="flex items-center gap-1">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${stateColors[evt.event_type] || 'bg-gray-100 text-gray-700'}`}>
                               {evt.event_type}
                             </span>
                             {i < events.length - 1 && <ChevronRight className="h-3 w-3 text-gray-400" />}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${stateColors[status] || 'bg-gray-100 text-gray-700'}`}>
-                        {status}
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${stateColors[displayStatus] || 'bg-gray-100 text-gray-700'}`}>
+                        {displayStatus}
                       </span>
                     </td>
                   </tr>

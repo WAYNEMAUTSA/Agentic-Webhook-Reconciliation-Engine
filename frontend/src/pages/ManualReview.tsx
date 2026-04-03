@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { BASE_URL } from '../lib/api';
-import { AlertTriangle, CheckCircle, RefreshCw, Loader2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle, RefreshCw, Loader2, X, Brain, Sparkles } from 'lucide-react';
 
 interface Anomaly {
   id: string;
@@ -28,6 +28,9 @@ export default function ManualReview() {
   const [refetching, setRefetching] = useState<string | null>(null);
   const [refetchResult, setRefetchResult] = useState<{ success: boolean; message: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [aiHandling, setAiHandling] = useState(false);
+  const [aiProcessing, setAiProcessing] = useState<Set<string>>(new Set());
+  const [aiResults, setAiResults] = useState<{ id: string; transactionId: string; status: string; message: string }[] | null>(null);
 
   const fetchAnomalies = useCallback(async () => {
     setRefreshing(true);
@@ -44,7 +47,8 @@ export default function ManualReview() {
 
   useEffect(() => {
     fetchAnomalies();
-    const interval = setInterval(fetchAnomalies, 10000);
+    // Poll every 5 seconds for real-time updates (anomalies appearing/disappearing)
+    const interval = setInterval(fetchAnomalies, 5000);
     return () => clearInterval(interval);
   }, [fetchAnomalies]);
 
@@ -97,6 +101,34 @@ export default function ManualReview() {
     }
   };
 
+  const handleAiAutoHandle = async () => {
+    setAiHandling(true);
+    setAiResults(null);
+
+    // Mark all current anomalies as AI processing
+    const currentIds = new Set(anomalies.filter((a) => !a.resolved_at).map((a) => a.id));
+    setAiProcessing(currentIds);
+
+    try {
+      const res = await axios.post(`${BASE_URL}/anomalies/auto-handle`);
+
+      setAiResults(res.data.results || []);
+
+      // Refresh anomalies after AI handling
+      await fetchAnomalies();
+
+      // Clear processing state after a delay
+      setTimeout(() => {
+        setAiProcessing(new Set());
+        setAiHandling(false);
+      }, 2000);
+    } catch (err: any) {
+      console.error('AI auto-handle failed:', err);
+      setAiHandling(false);
+      setAiProcessing(new Set());
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-12 text-gray-500">Loading anomalies...</div>;
   }
@@ -119,17 +151,36 @@ export default function ManualReview() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Manual Review Queue</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">AI Auto-Review Queue</h2>
           <p className="text-sm text-gray-600">{unresolvedAnomalies.length} unresolved anomalies</p>
         </div>
-        <button
-          onClick={fetchAnomalies}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleAiAutoHandle}
+            disabled={aiHandling}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-purple-300 bg-gradient-to-r from-purple-50 to-indigo-50 text-purple-700 text-sm font-semibold hover:from-purple-100 hover:to-indigo-100 disabled:opacity-50 transition shadow-sm"
+          >
+            {aiHandling ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                AI Processing...
+              </>
+            ) : (
+              <>
+                <Brain className="h-4 w-4" />
+                AI Auto-Handle
+              </>
+            )}
+          </button>
+          <button
+            onClick={fetchAnomalies}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Refetch result banner */}
@@ -148,20 +199,60 @@ export default function ManualReview() {
         </div>
       )}
 
+      {/* AI results banner */}
+      {aiResults && aiResults.length > 0 && (
+        <div className="rounded-lg border p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 text-purple-800">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4" />
+            <p className="text-sm font-semibold">AI Auto-Handle Results</p>
+          </div>
+          <div className="space-y-1">
+            {aiResults.map((result) => (
+              <div key={result.id} className="text-xs flex items-center gap-2">
+                {result.status === 'healed' && <CheckCircle className="h-3 w-3 text-green-600" />}
+                {result.status === 'suppressed' && <X className="h-3 w-3 text-gray-500" />}
+                {result.status === 'failed' && <AlertTriangle className="h-3 w-3 text-red-600" />}
+                {result.status === 'retrying' && <Loader2 className="h-3 w-3 text-amber-600 animate-spin" />}
+                <span className="font-mono">{result.transactionId.substring(0, 12)}</span>
+                <span className={
+                  result.status === 'healed' ? 'text-green-700' :
+                  result.status === 'failed' ? 'text-red-700' :
+                  result.status === 'retrying' ? 'text-amber-700' :
+                  'text-gray-600'
+                }>
+                  {result.message}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Anomaly Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {unresolvedAnomalies.map((anomaly) => (
-          <div key={anomaly.id} className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden hover:shadow-md transition">
-            {/* Red left border */}
-            <div className="h-1 bg-red-500"></div>
+        {unresolvedAnomalies.map((anomaly) => {
+          const isProcessing = aiProcessing.has(anomaly.id);
+          return (
+          <div key={anomaly.id} className={`rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden hover:shadow-md transition ${isProcessing ? 'ring-2 ring-purple-400 animate-pulse' : ''}`}>
+            {/* Red left border (or purple if AI processing) */}
+            <div className={`h-1 ${isProcessing ? 'bg-purple-500 animate-pulse' : 'bg-red-500'}`}></div>
 
             <div className="p-6">
               {/* Header */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <span className="text-xs font-semibold text-red-600 uppercase">{anomaly.severity}</span>
+                    {isProcessing ? (
+                      <>
+                        <Brain className="h-4 w-4 text-purple-600 animate-spin" />
+                        <span className="text-xs font-semibold text-purple-600 uppercase">AI Processing</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <span className="text-xs font-semibold text-red-600 uppercase">{anomaly.severity}</span>
+                      </>
+                    )}
                   </div>
                   <p className="text-xs font-mono text-gray-600 truncate">{anomaly.transaction_id.substring(0, 12)}...</p>
                 </div>
@@ -182,14 +273,15 @@ export default function ManualReview() {
               <div className="flex gap-2">
                 <button
                   onClick={() => handleResolve(anomaly)}
-                  className="flex-1 px-3 py-2 rounded border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
+                  disabled={isProcessing}
+                  className="flex-1 px-3 py-2 rounded border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
                 >
                   Resolve Manually
                 </button>
                 <button
                   onClick={() => handleRefetch(anomaly)}
-                  disabled={refetching === anomaly.id}
-                  className="flex-1 px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition flex items-center justify-center gap-1"
+                  disabled={refetching === anomaly.id || isProcessing}
+                  className="flex-1 px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-1"
                 >
                   {refetching === anomaly.id ? (
                     <>
@@ -206,7 +298,8 @@ export default function ManualReview() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Resolve Modal */}

@@ -53,12 +53,13 @@ export default function Dashboard() {
 
   const fetchMetrics = async () => {
     try {
-      const [metricsRes, anomaliesRes, transactionsRes, driftHistoryRes, healerHistoryRes] = await Promise.all([
+      const [metricsRes, _anomaliesRes, transactionsRes, driftHistoryRes, healerHistoryRes, allAnomaliesRes] = await Promise.all([
         axios.get<Metrics>(`${BASE_URL}/metrics`),
         axios.get(`${BASE_URL}/anomalies`),
         axios.get(`${BASE_URL}/transactions?limit=1000`),
         axios.get(`${BASE_URL}/metrics/drift-history`),
         axios.get(`${BASE_URL}/metrics/healer-history`),
+        axios.get(`${BASE_URL}/anomalies?include_resolved=true`),
       ]);
 
       const data = metricsRes.data;
@@ -75,7 +76,9 @@ export default function Dashboard() {
       const transactions = transactionsRes.data.data || [];
       const stateMap: Record<string, number> = {};
       transactions.forEach((tx: any) => {
-        const state = tx.current_state || 'unknown';
+        // Map 'unknown' states to their actual state or skip them
+        const state = tx.current_state;
+        if (!state || state === 'unknown') return; // Skip unknown states
         stateMap[state] = (stateMap[state] || 0) + 1;
       });
 
@@ -87,7 +90,6 @@ export default function Dashboard() {
         settled: '#22c55e',
         failed: '#ef4444',
         refunded: '#6366f1',
-        unknown: '#f59e0b',
       };
 
       const realVolume = Object.entries(stateMap)
@@ -100,15 +102,20 @@ export default function Dashboard() {
 
       setWebhookVolume(realVolume.length > 0 ? realVolume : []);
 
-      // Heal activity from anomalies
-      const anomalies = anomaliesRes.data.data || [];
+      // Heal activity from ALL anomalies (including recently resolved ones)
+      const allAnomalies = allAnomaliesRes.data.data || [];
       setHealActivity(
-        anomalies.slice(0, 5).map((a: any) => ({
-          id: a.id,
-          description: a.description || `Resolved anomaly in tx ${a.transaction_id?.substring(0, 8)}`,
-          created_at: a.created_at,
-          transaction_id: a.transaction_id,
-        }))
+        allAnomalies
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 10)
+          .map((a: any) => ({
+            id: a.id,
+            description: a.resolution_notes
+              ? `✓ ${a.resolution_notes.substring(0, 80)}${a.resolution_notes.length > 80 ? '...' : ''}`
+              : a.description || `Resolved anomaly in tx ${a.transaction_id?.substring(0, 8)}`,
+            created_at: a.resolved_at || a.created_at,
+            transaction_id: a.transaction_id,
+          }))
       );
     } catch (err) {
       console.error('Failed to fetch metrics:', err);
@@ -286,18 +293,18 @@ export default function Dashboard() {
       {/* Audit Log + Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* AI Agent Audit Log */}
-        <div className="log-panel">
+        <div className="log-panel flex flex-col">
           <h3 className="text-base font-semibold text-[#111827] mb-4 flex items-center gap-2">
             <Shield className="h-5 w-5" style={{ color: '#6366F1' }} />
             AI Agent Audit Log
           </h3>
           {healerHistory.length === 0 ? (
-            <div className="flex items-center justify-center h-[200px] text-[#6B7280] text-sm">
+            <div className="flex items-center justify-center h-[300px] text-[#6B7280] text-sm">
               No agent interventions yet.
             </div>
           ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-              {healerHistory.slice(0, 15).map((entry: any) => (
+            <div className="space-y-3 min-h-[300px] max-h-[400px] overflow-y-auto pr-2 flex-1">
+              {healerHistory.slice(0, 20).map((entry: any) => (
                 <div key={entry.id} className="text-xs border-b border-[#E5E7EB] pb-3 last:border-0">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -328,17 +335,17 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="log-panel">
+        <div className="log-panel flex flex-col">
           <h3 className="text-base font-semibold text-[#111827] mb-4 flex items-center gap-2">
             <TrendingDown className="h-5 w-5" style={{ color: '#0EA5E9' }} />
             Recent Activity
           </h3>
           {healActivity.length === 0 ? (
-            <div className="flex items-center justify-center h-[200px] text-[#6B7280] text-sm">
+            <div className="flex items-center justify-center h-[300px] text-[#6B7280] text-sm">
               No recent activity. Ledger is healthy.
             </div>
           ) : (
-            <div className="divide-y divide-[#E5E7EB]">
+            <div className="divide-y divide-[#E5E7EB] min-h-[300px] max-h-[400px] overflow-y-auto flex-1">
               {healActivity.map((activity) => (
                 <div key={activity.id} className="py-3 flex items-start justify-between">
                   <div className="flex-1 pr-4">

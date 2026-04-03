@@ -18,8 +18,8 @@ interface InjectorConfig {
 }
 
 const DEFAULT_CONFIG: InjectorConfig = {
-  enabled: false,
-  intervalMs: 5000, // Inject a batch every 5 seconds
+  enabled: true,
+  intervalMs: 1000, // Inject a batch every 1 second
   batchSize: 3, // 3 transactions per batch
   eventSequence: [
     'payment.created',
@@ -27,13 +27,13 @@ const DEFAULT_CONFIG: InjectorConfig = {
     'payment.captured',
   ],
   scenarioWeights: {
-    normal: 92,
-    duplicate: 2,
-    out_of_order: 2,
-    dropped: 2,
+    normal: 50,
+    duplicate: 5,
+    out_of_order: 5,
+    dropped: 15,
     invalid_payload: 0,
-    gateway_outage: 1,
-    state_conflict: 1,
+    gateway_outage: 15,
+    state_conflict: 10,
   },
 };
 
@@ -215,10 +215,11 @@ function pickScenario(weights: Record<InjectorScenario, number>): InjectorScenar
 }
 
 /**
- * Generate a random transaction amount (realistic payment amounts)
+ * Generate a random transaction amount (realistic enterprise payment amounts)
  */
 function generateRandomAmount(): number {
-  const amounts = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000];
+  // Enterprise payment amounts: ₹10,000 to ₹500,000 (in paise: 1,000,000 to 50,000,000)
+  const amounts = [10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000];
   return amounts[Math.floor(Math.random() * amounts.length)] * 100; // Convert to paise
 }
 

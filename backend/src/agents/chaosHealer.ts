@@ -40,12 +40,11 @@ interface HealResult {
 }
 
 /**
- * Canonical Razorpay lifecycle:
- *   initiated → created → authorized → captured → settled
+ * Canonical Razorpay lifecycle (webhook-emitted states):
+ *   created → authorized → captured → settled
  *   Refunded and failed can branch from captured.
  */
 const RAZORPAY_LIFECYCLE: TransactionState[] = [
-  'initiated',
   'created',
   'authorized',
   'captured',
@@ -174,24 +173,18 @@ export async function chaosHealer(ctx: ChaosContext): Promise<HealResult> {
   if (!existingTxn) {
     if (incomingEventType === 'captured' && !presentStates.has('created')) {
       logStep('Agent', `FOUND: Out-of-order — "captured" arrived with no "created" or "authorized".`);
-      logStep('Agent', `ACTION: Synthesizing bridge: created → authorized → captured`);
+      logStep('Agent', `ACTION: Recording anomaly for async healing (no bridge synthesis).`);
       reasoningSteps.push('Out-of-order detection: "captured" event arrived as first event without "created" or "authorized" predecessors.');
-      reasoningSteps.push('Bridge synthesis: created → authorized → captured to restore lifecycle integrity.');
-
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 4);
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'authorized', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 2);
-      bridgeEventsSynthesized = 2;
-      actions.push('Synthesized "created" bridge event (out-of-order recovery)');
-      actions.push('Synthesized "authorized" bridge event (out-of-order recovery)');
+      reasoningSteps.push('Deferred healing: gap will be resolved by async heal worker via gateway poll.');
+      bridgeEventsSynthesized = 0;
+      actions.push('Detected missing "created" and "authorized" — deferred to heal worker');
     } else if (incomingEventType === 'authorized' && !presentStates.has('created')) {
       logStep('Agent', `FOUND: Out-of-order — "authorized" arrived with no "created".`);
-      logStep('Agent', `ACTION: Synthesizing bridge: created → authorized`);
+      logStep('Agent', `ACTION: Recording anomaly for async healing (no bridge synthesis).`);
       reasoningSteps.push('Out-of-order detection: "authorized" arrived without "created" predecessor.');
-      reasoningSteps.push('Bridge synthesis: created → authorized to restore lifecycle integrity.');
-
-      await synthesizeBridgeEvent(gatewayTxnId, gateway, 'created', amount, currency, rawPayload, gatewayTimestamp, 'out_of_order_recovery', 2);
-      bridgeEventsSynthesized = 1;
-      actions.push('Synthesized "created" bridge event (out-of-order recovery)');
+      reasoningSteps.push('Deferred healing: gap will be resolved by async heal worker via gateway poll.');
+      bridgeEventsSynthesized = 0;
+      actions.push('Detected missing "created" — deferred to heal worker');
     }
   } else {
     // Transaction exists — check for out-of-order or dropped events
@@ -236,18 +229,15 @@ export async function chaosHealer(ctx: ChaosContext): Promise<HealResult> {
     }
 
     // Dropped: incoming event skips intermediate states
+    // DO NOT synthesize bridge events — let gap detection create heal jobs
     if (currentIdx !== -1 && incomingIdx !== -1 && incomingIdx > currentIdx + 1) {
       const missingStates = RAZORPAY_LIFECYCLE.slice(currentIdx + 1, incomingIdx);
       logStep('Agent', `FOUND: Dropped events — gap from "${currentState}" to "${incomingEventType}". Missing: [${missingStates.join(', ')}]`);
-      logStep('Agent', `ACTION: Synthesizing bridge events: ${missingStates.join(' → ')}`);
+      logStep('Agent', `ACTION: Deferring to async heal worker (no bridge synthesis).`);
       reasoningSteps.push(`Dropped event detection: gap from "${currentState}" to "${incomingEventType}". Missing states: [${missingStates.join(', ')}].`);
-      reasoningSteps.push(`Bridge synthesis: ${missingStates.join(' → ')} to fill lifecycle gaps.`);
-
-      for (const missingState of missingStates) {
-        await synthesizeBridgeEvent(gatewayTxnId, gateway, missingState, amount, currency, rawPayload, gatewayTimestamp, 'dropped_event_recovery');
-        bridgeEventsSynthesized++;
-        actions.push(`Synthesized "${missingState}" bridge event (dropped event recovery)`);
-      }
+      reasoningSteps.push(`Deferred healing: heal worker will poll gateway and inject missing events.`);
+      bridgeEventsSynthesized = 0;
+      actions.push(`Detected missing [${missingStates.join(', ')}] — deferred to heal worker`);
     }
 
     // Same state arrived again (duplicate at state level)
