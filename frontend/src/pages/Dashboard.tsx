@@ -15,6 +15,9 @@ interface Metrics {
 interface DriftDataPoint {
   timestamp: string;
   driftRate: number;
+  dropped?: number;
+  outOfOrder?: number;
+  duplicates?: number;
 }
 
 interface WebhookVolumeData {
@@ -39,22 +42,19 @@ export default function Dashboard() {
 
   const fetchMetrics = async () => {
     try {
-      const [metricsRes, anomaliesRes, transactionsRes] = await Promise.all([
+      const [metricsRes, anomaliesRes, transactionsRes, driftHistoryRes] = await Promise.all([
         axios.get<Metrics>(`${BASE_URL}/metrics`),
         axios.get(`${BASE_URL}/anomalies`),
         axios.get(`${BASE_URL}/transactions?limit=1000`),
+        axios.get(`${BASE_URL}/metrics/drift-history`),
       ]);
 
       const data = metricsRes.data;
       setMetrics(data);
 
-      // Build drift history (simulated with current value)
-      const now = new Date();
-      const timestamp = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      setDriftHistory((prev) => {
-        const updated = [...prev, { timestamp, driftRate: data.driftRate }];
-        return updated.slice(-12); // Keep last 12 data points
-      });
+      // Real drift history from drift_snapshots
+      const driftData = driftHistoryRes.data.data || [];
+      setDriftHistory(driftData);
 
       // Real transaction states breakdown from transactions data
       const transactions = transactionsRes.data.data || [];
@@ -181,26 +181,33 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Drift Rate Trend */}
         <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Drift Rate Trend</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={driftHistory.length === 0 ? [{ timestamp: 'Now', driftRate: metrics.driftRate }] : driftHistory}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="timestamp" tick={{ fontSize: 12 }} stroke="#9ca3af" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" label={{ value: '(%)', position: 'insideLeft', offset: -5 }} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
-                labelStyle={{ color: '#111827' }}
-              />
-              <Line
-                type="monotone"
-                dataKey="driftRate"
-                stroke={isDriftCritical ? '#ef4444' : '#10b981'}
-                strokeWidth={2}
-                dot={false}
-                name="Drift %"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Drift Rate Trend (last 20 min)</h3>
+          {driftHistory.length === 0 ? (
+            <div className="text-center py-12 text-gray-500 text-sm">
+              Collecting drift data... snapshots recorded every 10 seconds.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={driftHistory}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="timestamp" tick={{ fontSize: 10 }} stroke="#9ca3af" angle={-30} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" label={{ value: 'Drift %', position: 'insideLeft', offset: -5 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
+                  labelStyle={{ color: '#111827' }}
+                  formatter={(value: number) => [`${value.toFixed(1)}%`, 'Drift Rate']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="driftRate"
+                  stroke={isDriftCritical ? '#ef4444' : '#10b981'}
+                  strokeWidth={2}
+                  dot={false}
+                  name="Drift %"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Webhook Volume by Gateway */}

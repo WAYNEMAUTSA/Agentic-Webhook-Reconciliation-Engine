@@ -11,6 +11,7 @@ import { webhookWorker } from './workers/webhookWorker.js';
 import { healWorker } from './workers/healWorker.js';
 import { startDataInjector } from './services/dataInjector.js';
 import injectorRouter from './routes/injector.js';
+import { recordDriftSnapshot } from './services/driftRecorder.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,6 +52,16 @@ healWorker.on('ready', () => {
     intervalMs: Number(process.env.INJECTOR_INTERVAL_MS ?? 5000),
     batchSize: Number(process.env.INJECTOR_BATCH_SIZE ?? 2),
   });
+
+  // Start drift snapshot recorder — every 10 seconds
+  setInterval(async () => {
+    try {
+      await recordDriftSnapshot();
+    } catch (err: any) {
+      console.error('Drift snapshot error:', err.message);
+    }
+  }, 10_000);
+  console.log('Drift snapshot recorder started (every 10s)');
 });
 
 export default app;

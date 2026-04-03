@@ -3,27 +3,100 @@ import { supabase } from '../db/supabase.js';
 
 const router = Router();
 
-// GET /metrics — dashboard metrics
+// GET /metrics — dashboard metrics with real-world drift calculation
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    // Total transactions
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    // ── Total transactions in recent window ──
     const { count: totalTransactions } = await supabase
       .from('transactions')
-      .select('*', { count: 'exact', head: true });
-
-    // Transactions with open heal_jobs (drift)
-    const { count: openHealJobs } = await supabase
-      .from('heal_jobs')
       .select('*', { count: 'exact', head: true })
-      .neq('status', 'resolved');
+      .gte('created_at', fiveMinutesAgo);
 
-    // Drift rate = (open heal jobs / total transactions) * 100
-    const driftRate =
-      totalTransactions && totalTransactions > 0
-        ? ((openHealJobs ?? 0) / totalTransactions) * 100
-        : 0;
+    // ── Drift: transactions with state gaps ──
+    const { data: recentTxns, error: txnsErr } = await supabase
+      .from('transactions')
+      .select('id')
+      .gte('created_at', fiveMinutesAgo);
 
-    // Heal job stats
+    if (txnsErr) throw new Error(txnsErr.message);
+
+    let driftedCount = 0;
+    let droppedCount = 0;
+    let outOfOrderCount = 0;
+    let duplicateCount = 0;
+
+    if (recentTxns && recentTxns.length > 0) {
+      const txnIds = recentTxns.map((t) => t.id);
+
+      const { data: allEvents, error: eventsErr } = await supabase
+        .from('webhook_events')
+        .select('transaction_id, event_type, gateway_timestamp, source')
+        .in('transaction_id', txnIds)
+        .order('gateway_timestamp', { ascending: true });
+
+      if (!eventsErr && allEvents) {
+        const eventsByTxn: Record<string, typeof allEvents> = {};
+        allEvents.forEach((evt) => {
+          if (!eventsByTxn[evt.transaction_id]) eventsByTxn[evt.transaction_id] = [];
+          eventsByTxn[evt.transaction_id].push(evt);
+        });
+
+        for (const txnId of txnIds) {
+          const events = eventsByTxn[txnId] || [];
+          const eventTypes = events.map((e) => e.event_type);
+          const hasCreated = eventTypes.includes('created');
+          const hasAuthorized = eventTypes.includes('authorized');
+          const hasCaptured = eventTypes.includes('captured');
+
+          // Dropped: captured without created or authorized
+          if (hasCaptured && !hasCreated) {
+            driftedCount++;
+            droppedCount++;
+            continue;
+          }
+          if (hasCaptured && !hasAuthorized) {
+            driftedCount++;
+            droppedCount++;
+            continue;
+          }
+
+          // Check for out-of-order events
+          for (let i = 1; i < events.length; i++) {
+            const prev = events[i - 1].event_type;
+            const curr = events[i].event_type;
+            if (
+              (prev === 'captured' && (curr === 'created' || curr === 'authorized')) ||
+              (prev === 'authorized' && curr === 'created')
+            ) {
+              outOfOrderCount++;
+              if (!eventTypes.includes('drifted_flagged')) {
+                driftedCount++;
+                eventTypes.push('drifted_flagged' as any);
+              }
+              break;
+            }
+          }
+
+          // Duplicates
+          const typeCount: Record<string, number> = {};
+          events.forEach((evt) => {
+            const key = `${evt.event_type}:${evt.source}`;
+            typeCount[key] = (typeCount[key] || 0) + 1;
+          });
+          const hasDuplicates = Object.values(typeCount).some((c) => c > 1);
+          if (hasDuplicates) {
+            duplicateCount++;
+          }
+        }
+      }
+    }
+
+    const total = totalTransactions ?? 0;
+    const driftRate = total > 0 ? (driftedCount / total) * 100 : 0;
+
+    // ── Heal job stats ──
     const { count: resolvedHealJobs } = await supabase
       .from('heal_jobs')
       .select('*', { count: 'exact', head: true })
@@ -34,21 +107,20 @@ router.get('/', async (_req: Request, res: Response) => {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'failed');
 
-    // Heal success rate = resolved / (resolved + failed) * 100
     const healSuccessDenominator = (resolvedHealJobs ?? 0) + (failedHealJobs ?? 0);
     const healSuccessRate =
       healSuccessDenominator > 0
         ? ((resolvedHealJobs ?? 0) / healSuccessDenominator) * 100
-        : 0;
+        : 100;
 
-    // Webhooks in last 60 minutes
+    // ── Webhooks in last 60 minutes ──
     const sixtyMinutesAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { count: totalWebhooks } = await supabase
       .from('webhook_events')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', sixtyMinutesAgo);
 
-    // Unresolved anomalies
+    // ── Unresolved anomalies ──
     const { count: openAnomalies } = await supabase
       .from('anomalies')
       .select('*', { count: 'exact', head: true })
@@ -56,11 +128,49 @@ router.get('/', async (_req: Request, res: Response) => {
 
     return res.json({
       driftRate: parseFloat(driftRate.toFixed(1)),
+      driftBreakdown: {
+        total,
+        drifted: driftedCount,
+        healthy: total - driftedCount,
+        dropped: droppedCount,
+        outOfOrder: outOfOrderCount,
+        duplicates: duplicateCount,
+      },
       healSuccessRate: parseFloat(healSuccessRate.toFixed(1)),
       totalWebhooks: totalWebhooks ?? 0,
       openAnomalies: openAnomalies ?? 0,
-      totalTransactions: totalTransactions ?? 0,
     });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /metrics/drift-history — last 60 drift snapshots for charting
+router.get('/drift-history', async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('drift_snapshots')
+      .select('recorded_at, drift_rate, dropped_events_count, out_of_order_count, duplicate_count, total_recent_txns, drifted_txns')
+      .order('recorded_at', { ascending: true })
+      .limit(120); // last 20 minutes at 10s intervals
+
+    if (error) throw new Error(error.message);
+
+    const formatted = (data || []).map((s) => ({
+      timestamp: new Date(s.recorded_at).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      driftRate: parseFloat(s.drift_rate),
+      dropped: s.dropped_events_count,
+      outOfOrder: s.out_of_order_count,
+      duplicates: s.duplicate_count,
+      total: s.total_recent_txns,
+      drifted: s.drifted_txns,
+    }));
+
+    return res.json({ data: formatted });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
