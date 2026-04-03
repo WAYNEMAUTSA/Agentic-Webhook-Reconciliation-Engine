@@ -1,85 +1,163 @@
-import { useState, useEffect } from 'react';
-import MetricCards from '../components/MetricCards';
-import DriftChart from '../components/DriftChart';
-import axios from 'axios';
-import { BASE_URL } from '../lib/api';
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { BarChart3, TrendingUp, AlertTriangle } from "lucide-react";
+import type { MetricsResponse, AnomalyResponse } from "@/types";
 
-interface Transaction {
-  id: string;
-  webhook_events: { event_type: string; gateway_timestamp: string }[];
-  amount: number;
-  gateway: string;
-  current_state: string;
-}
+export function Overview() {
+  const { data: metrics, isLoading: metricsLoading } = useQuery<MetricsResponse>({
+    queryKey: ["metrics"],
+  });
 
-export default function Overview() {
-  const [healingTransactions, setHealingTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: anomalies, isLoading: anomaliesLoading } = useQuery<AnomalyResponse[]>({
+    queryKey: ["anomalies"],
+  });
 
-  useEffect(() => {
-    const fetchHealingTransactions = async () => {
-      try {
-        const res = await axios.get(
-          `${BASE_URL}/transactions`,
-          { params: { state: 'unknown', limit: 5 } }
-        );
-        setHealingTransactions(res.data.data || []);
-      } catch (err) {
-        console.error('Failed to fetch healing transactions:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchHealingTransactions();
-  }, []);
+  if (metricsLoading || anomaliesLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-6">
+                <div className="h-24 animate-pulse rounded-md bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <MetricCards />
-      <DriftChart />
-
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Heal Activity</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Transactions in unknown/healing state</p>
-        </div>
-        {loading ? (
-          <div className="p-6 text-center text-gray-400">Loading...</div>
-        ) : healingTransactions.length === 0 ? (
-          <div className="p-6 text-center text-gray-400">No transactions in healing state.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-900/50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Transaction ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Amount</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Gateway</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">Current State</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {healingTransactions.map((tx) => {
-                  const events = tx.webhook_events || [];
-                  const currentState = events[events.length - 1]?.event_type || tx.current_state;
-                  return (
-                    <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{tx.id}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">${(tx.amount / 100)?.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{tx.gateway}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                          {currentState}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div>
+        <h2 className="text-2xl font-bold">System Overview</h2>
+        <p className="text-muted-foreground">
+          Summary of webhook events and payment gateway reconciliation
+        </p>
       </div>
+
+      {/* Key Metrics */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Drift Rate</CardTitle>
+            <CardDescription>Current system drift</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <span className="text-2xl font-bold">
+                {metrics?.drift_rate ?? "—"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Heal Success Rate</CardTitle>
+            <CardDescription>Auto-recovery rate</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-success" />
+              <span className="text-2xl font-bold">
+                {metrics?.heal_success_rate != null
+                  ? `${metrics.heal_success_rate}%`
+                  : "—"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Webhooks (60min)</CardTitle>
+            <CardDescription>Events processed</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold">
+                {metrics?.webhooks_60min ?? "—"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Open Anomalies</CardTitle>
+            <CardDescription>Requires attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              <span className="text-2xl font-bold">
+                {metrics?.open_anomalies ?? "—"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Anomalies */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Anomalies</CardTitle>
+          <CardDescription>Last 10 anomalies detected</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(anomalies ?? []).length === 0 ? (
+            <div className="flex h-[200px] items-center justify-center text-muted-foreground">
+              No anomalies detected
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(anomalies ?? []).slice(0, 10).map((anomaly) => (
+                <div
+                  key={anomaly.id}
+                  className="flex items-start justify-between rounded-lg border p-4"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          anomaly.severity === "critical"
+                            ? "destructive"
+                            : anomaly.severity === "high"
+                            ? "destructive"
+                            : anomaly.severity === "medium"
+                            ? "warning"
+                            : "default"
+                        }
+                      >
+                        {anomaly.severity}
+                      </Badge>
+                      <span className="text-sm font-medium">{anomaly.type}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {anomaly.description}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={
+                      anomaly.status === "open"
+                        ? "warning"
+                        : anomaly.status === "resolved"
+                        ? "success"
+                        : "secondary"
+                    }
+                  >
+                    {anomaly.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

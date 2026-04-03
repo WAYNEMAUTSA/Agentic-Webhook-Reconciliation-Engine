@@ -1,56 +1,82 @@
-import React from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Activity, Table, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { BarChart3, ListChecks, ShieldCheck, Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-const NAV = [
-  { to: "/", label: "Health Overview", icon: Activity },
-  { to: "/transactions", label: "Transactions", icon: Table },
-  { to: "/manual-review", label: "Manual Review", icon: AlertTriangle },
-] as const;
+export function AppLayout() {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation();
-
-  return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b bg-card px-6 py-3 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-6">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            <span className="text-primary">QUANTUM</span>VIEW
-          </h1>
-          <nav className="hidden md:flex items-center gap-1">
-            {NAV.map(({ to, label, icon: Icon }) => (
-              <Link
-                key={to}
-                to={to}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  pathname === to
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <LiveTimestamp />
-      </header>
-      <main className="flex-1 p-4 md:p-6 max-w-[1400px] w-full mx-auto">{children}</main>
-    </div>
-  );
-}
-
-function LiveTimestamp() {
-  const [now, setNow] = React.useState(new Date());
-  React.useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 5_000);
-    return () => clearInterval(id);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 5000);
+    return () => clearInterval(timer);
   }, []);
+
   return (
-    <span className="text-xs text-muted-foreground tabular-nums">
-      {now.toLocaleTimeString()} · {now.toLocaleDateString()}
-    </span>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <div className="flex items-center gap-4">
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-6 w-6 text-primary" />
+              <h1 className="text-xl font-bold">QuantumView</h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <time className="text-sm text-muted-foreground">
+              {currentTime.toLocaleTimeString()}
+            </time>
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
+              </span>
+              <span className="text-sm text-muted-foreground">Live</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="container mx-auto px-4 py-6">
+        {/* Navigation Tabs */}
+        <Tabs defaultValue="dashboard" className="mb-6" onValueChange={(value) => navigate(`/${value === "dashboard" ? "" : value}`)}>
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
+            <TabsTrigger value="dashboard" className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              {!isMobile && "Live Overview"}
+            </TabsTrigger>
+            <TabsTrigger value="transactions" className="flex items-center gap-2">
+              <ListChecks className="h-4 w-4" />
+              {!isMobile && "Transactions"}
+            </TabsTrigger>
+            <TabsTrigger value="review" className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              {!isMobile && "Manual Review"}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        {/* Main Content */}
+        <main>
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 }

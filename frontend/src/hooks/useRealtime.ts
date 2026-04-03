@@ -1,55 +1,55 @@
-import { useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import type { Transaction, Anomaly } from "@/lib/supabase";
 
 interface UseRealtimeOptions {
-  onTransactionChange?: (payload: unknown) => void;
-  onNewAnomaly?: (payload: unknown) => void;
+  onTransactionUpdate?: (transaction: Transaction) => void;
+  onAnomalyInsert?: (anomaly: Anomaly) => void;
+  enabled?: boolean;
 }
 
-export function useRealtime({ onTransactionChange, onNewAnomaly }: UseRealtimeOptions) {
+export function useRealtime(options: UseRealtimeOptions = {}) {
+  const { onTransactionUpdate, onAnomalyInsert, enabled = true } = options;
+  const [isConnected, setIsConnected] = useState(false);
+
+  const handleTransactionChange = useCallback(
+    (payload: any) => {
+      onTransactionUpdate?.(payload.new as Transaction);
+    },
+    [onTransactionUpdate]
+  );
+
+  const handleAnomalyInsert = useCallback(
+    (payload: any) => {
+      onAnomalyInsert?.(payload.new as Anomaly);
+    },
+    [onAnomalyInsert]
+  );
+
   useEffect(() => {
-    const channels: ReturnType<typeof supabase.channel>[] = [];
+    if (!enabled) return;
 
-    if (onTransactionChange) {
-      const txChannel = supabase
-        .channel('transactions-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'transactions',
-          },
-          (payload) => {
-            onTransactionChange(payload);
-          }
-        )
-        .subscribe();
-      channels.push(txChannel);
-    }
-
-    if (onNewAnomaly) {
-      const anomalyChannel = supabase
-        .channel('anomalies-inserts')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'anomalies',
-          },
-          (payload) => {
-            onNewAnomaly(payload);
-          }
-        )
-        .subscribe();
-      channels.push(anomalyChannel);
-    }
+    const channel = supabase
+      .channel("realtime-updates")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "transactions" },
+        handleTransactionChange
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "anomalies" },
+        handleAnomalyInsert
+      )
+      .subscribe((status) => {
+        setIsConnected(status === "SUBSCRIBED");
+      });
 
     return () => {
-      channels.forEach((channel) => {
-        supabase.removeChannel(channel);
-      });
+      supabase.removeChannel(channel);
+      setIsConnected(false);
     };
-  }, [onTransactionChange, onNewAnomaly]);
+  }, [enabled, handleTransactionChange, handleAnomalyInsert]);
+
+  return { isConnected };
 }
