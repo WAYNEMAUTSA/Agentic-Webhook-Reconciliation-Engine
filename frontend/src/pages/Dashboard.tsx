@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { TrendingDown, Heart, Webhook, AlertTriangle, Activity } from "lucide-react";
-import axios from "axios";
-import { BASE_URL } from "../lib/api";
+import { useEffect, useState } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import axios from 'axios';
+import { BASE_URL } from '../lib/api';
+import { TrendingDown, Heart, Webhook, AlertTriangle } from 'lucide-react';
 
 interface Metrics {
   driftRate: number;
@@ -12,159 +12,223 @@ interface Metrics {
   totalTransactions: number;
 }
 
+interface DriftDataPoint {
+  timestamp: string;
+  driftRate: number;
+}
+
 interface WebhookVolume {
   gateway: string;
   count: number;
 }
 
-interface HealEvent {
+interface HealActivity {
   id: string;
+  description: string;
+  created_at: string;
   transaction_id: string;
-  event_type: string;
-  gateway_timestamp: string;
 }
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [volume, setVolume] = useState<WebhookVolume[]>([]);
-  const [heals, setHeals] = useState<HealEvent[]>([]);
+  const [driftHistory, setDriftHistory] = useState<DriftDataPoint[]>([]);
+  const [webhookVolume, setWebhookVolume] = useState<WebhookVolume[]>([]);
+  const [healActivity, setHealActivity] = useState<HealActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const fetchMetrics = async () => {
     try {
-      const [mRes, anomaliesRes] = await Promise.all([
+      const [metricsRes, anomaliesRes, transactionsRes] = await Promise.all([
         axios.get<Metrics>(`${BASE_URL}/metrics`),
         axios.get(`${BASE_URL}/anomalies`),
+        axios.get(`${BASE_URL}/transactions?limit=1000`),
       ]);
-      setMetrics(mRes.data);
-      setVolume([
-        { gateway: "Razorpay", count: Math.round((mRes.data.totalWebhooks || 0) * 0.42) },
-        { gateway: "Stripe", count: Math.round((mRes.data.totalWebhooks || 0) * 0.35) },
-        { gateway: "Cashfree", count: Math.round((mRes.data.totalWebhooks || 0) * 0.23) },
-      ]);
-      setHeals(anomaliesRes.data.data?.slice(0, 5) || []);
+
+      const data = metricsRes.data;
+      setMetrics(data);
+
+      // Build drift history (simulated with current value)
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      setDriftHistory((prev) => {
+        const updated = [...prev, { timestamp, driftRate: data.driftRate }];
+        return updated.slice(-12); // Keep last 12 data points
+      });
+
+      // Real gateway breakdown from transactions data
+      const transactions = transactionsRes.data.data || [];
+      const gatewayMap: Record<string, number> = {};
+      transactions.forEach((tx: any) => {
+        const gateway = tx.gateway || 'Unknown';
+        gatewayMap[gateway] = (gatewayMap[gateway] || 0) + 1;
+      });
+
+      const realVolume = Object.entries(gatewayMap)
+        .map(([gateway, count]) => ({
+          gateway: gateway.charAt(0).toUpperCase() + gateway.slice(1),
+          count,
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      setWebhookVolume(realVolume.length > 0 ? realVolume : []);
+
+      // Heal activity from anomalies
+      const anomalies = anomaliesRes.data.data || [];
+      setHealActivity(
+        anomalies.slice(0, 5).map((a: any) => ({
+          id: a.id,
+          description: a.description || `Resolved anomaly in tx ${a.transaction_id?.substring(0, 8)}`,
+          created_at: a.created_at,
+          transaction_id: a.transaction_id,
+        }))
+      );
     } catch (err) {
-      console.error("Failed to load dashboard data:", err);
+      console.error('Failed to fetch metrics:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
-  }, [load]);
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-  if (loading || !metrics) return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading…</div>;
+  if (loading || !metrics) {
+    return <div className="text-center py-12 text-gray-500">Loading dashboard...</div>;
+  }
 
-  const driftDanger = metrics.driftRate > 5;
-  const queueWarn = metrics.openAnomalies > 0;
+  const isDriftCritical = metrics.driftRate > 5;
+  const hasManualQueue = metrics.openAnomalies > 0;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-foreground">Live Health Overview</h2>
-
-      {/* Metric cards */}
+    <div className="space-y-8">
+      {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard
-          label="Drift Rate"
-          value={`${metrics.driftRate}%`}
-          variant={driftDanger ? "destructive" : "success"}
-          icon={TrendingDown}
-        />
-        <MetricCard label="Heal Success Rate" value={`${metrics.healSuccessRate}%`} variant="success" icon={Heart} />
-        <MetricCard label="Webhooks (60 min)" value={metrics.totalWebhooks.toLocaleString()} variant="info" icon={Webhook} />
-        <MetricCard
-          label="Open Anomalies"
-          value={String(metrics.openAnomalies)}
-          variant={queueWarn ? "warning" : "default"}
-          icon={AlertTriangle}
-        />
+        {/* Drift Rate */}
+        <div className={`rounded-lg border shadow-sm p-6 ${isDriftCritical ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-600">Drift Rate</span>
+            <TrendingDown className={`h-5 w-5 ${isDriftCritical ? 'text-red-600' : 'text-green-600'}`} />
+          </div>
+          <p className={`text-3xl font-bold ${isDriftCritical ? 'text-red-600' : 'text-green-600'}`}>
+            {metrics.driftRate.toFixed(2)}%
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            {isDriftCritical ? 'Critical - Review needed' : 'Healthy'}
+          </p>
+        </div>
+
+        {/* Heal Success Rate */}
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-600">Heal Success Rate</span>
+            <Heart className="h-5 w-5 text-green-600" />
+          </div>
+          <p className="text-3xl font-bold text-green-600">
+            {metrics.healSuccessRate.toFixed(2)}%
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            {metrics.healSuccessRate >= 90 ? 'Excellent' : 'Monitor'}
+          </p>
+        </div>
+
+        {/* Webhooks */}
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-600">Webhooks (60 min)</span>
+            <Webhook className="h-5 w-5 text-blue-600" />
+          </div>
+          <p className="text-3xl font-bold text-gray-900">
+            {(metrics.totalWebhooks || 0).toLocaleString()}
+          </p>
+          <p className="text-xs text-gray-500 mt-2">Events received</p>
+        </div>
+
+        {/* Manual Queue */}
+        <div
+          className={`rounded-lg border shadow-sm p-6 ${hasManualQueue ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white'}`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-600">Open Anomalies</span>
+            <AlertTriangle className={`h-5 w-5 ${hasManualQueue ? 'text-amber-600' : 'text-gray-400'}`} />
+          </div>
+          <p className={`text-3xl font-bold ${hasManualQueue ? 'text-amber-600' : 'text-gray-600'}`}>
+            {metrics.openAnomalies}
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            {hasManualQueue ? 'Needs review' : 'All resolved'}
+          </p>
+        </div>
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-card border rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Drift Rate Trend</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={[{ timestamp: new Date().toISOString(), value: metrics.driftRate }]}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="timestamp" tick={false} />
-              <YAxis domain={[0, "auto"]} tickFormatter={(v: number) => `${v}%`} fontSize={12} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Drift Rate Trend */}
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Drift Rate Trend</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={driftHistory.length === 0 ? [{ timestamp: 'Now', driftRate: metrics.driftRate }] : driftHistory}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="timestamp" tick={{ fontSize: 12 }} stroke="#9ca3af" />
+              <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" label={{ value: '(%)', position: 'insideLeft', offset: -5 }} />
               <Tooltip
-                labelFormatter={(l: string) => new Date(l).toLocaleTimeString()}
-                formatter={(v: number) => [`${v}%`, "Drift"]}
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
+                labelStyle={{ color: '#111827' }}
               />
-              <Line type="monotone" dataKey="value" stroke={driftDanger ? "hsl(var(--destructive))" : "hsl(var(--success))"} strokeWidth={2} dot={false} />
+              <Line
+                type="monotone"
+                dataKey="driftRate"
+                stroke={isDriftCritical ? '#ef4444' : '#10b981'}
+                strokeWidth={2}
+                dot={false}
+                name="Drift %"
+              />
             </LineChart>
           </ResponsiveContainer>
-          <p className="text-xs text-muted-foreground text-center mt-2">Collecting data points…</p>
         </div>
 
-        <div className="bg-card border rounded-lg shadow-sm p-4">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Webhook Volume by Gateway</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={volume}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="gateway" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip />
-              <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+        {/* Webhook Volume by Gateway */}
+        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Webhook Volume by Gateway</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={webhookVolume}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="gateway" tick={{ fontSize: 12 }} stroke="#9ca3af" />
+              <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
+                labelStyle={{ color: '#111827' }}
+              />
+              <Bar dataKey="count" fill="#2563eb" radius={[8, 8, 0, 0]} name="Events" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Heal feed */}
-      <div className="bg-card border rounded-lg shadow-sm p-4">
-        <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
-          <Activity className="h-4 w-4" /> Open Anomalies
-        </h3>
-        {heals.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No anomalies — ledger is healthy.</p>
+      {/* Recent Activity */}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+        <h3 className="text-base font-semibold text-gray-900 mb-4">Recent Activity</h3>
+        {healActivity.length === 0 ? (
+          <p className="text-sm text-gray-500 py-8 text-center">No recent activity. Ledger is healthy.</p>
         ) : (
-          <ul className="divide-y">
-            {heals.map((h: any) => (
-              <li key={h.id} className="py-2 flex items-start justify-between text-sm">
-                <span className="text-foreground">{h.description}</span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">
-                  {new Date(h.created_at).toLocaleTimeString()}
+          <div className="divide-y">
+            {healActivity.map((activity) => (
+              <div key={activity.id} className="py-3 flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{activity.description}</p>
+                  <p className="text-xs text-gray-500 mt-1">{activity.transaction_id}</p>
+                </div>
+                <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+                  {new Date(activity.created_at).toLocaleTimeString()}
                 </span>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-type Variant = "destructive" | "success" | "warning" | "info" | "default";
-
-function MetricCard({ label, value, variant, icon: Icon }: { label: string; value: string | number; variant: Variant; icon: React.ElementType }) {
-  const ring: Record<Variant, string> = {
-    destructive: "border-destructive/40 bg-destructive/5",
-    success: "border-success/40 bg-success/5",
-    warning: "border-warning/40 bg-warning/5",
-    info: "border-primary/40 bg-primary/5",
-    default: "border-border",
-  };
-  const text: Record<Variant, string> = {
-    destructive: "text-destructive",
-    success: "text-success",
-    warning: "text-warning",
-    info: "text-primary",
-    default: "text-foreground",
-  };
-
-  return (
-    <div className={`bg-card border rounded-lg shadow-sm p-4 ${ring[variant]}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
-        <Icon className={`h-4 w-4 ${text[variant]}`} />
-      </div>
-      <p className={`text-2xl font-bold tabular-nums ${text[variant]}`}>{value}</p>
-    </div>
-  );
-}

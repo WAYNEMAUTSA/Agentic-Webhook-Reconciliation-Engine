@@ -1,83 +1,70 @@
 import { useState } from 'react';
-import Overview from './pages/Overview';
+import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
-import ReviewQueue from './pages/ReviewQueue';
+import ManualReview from './pages/ManualReview';
 import axios from 'axios';
 import { BASE_URL } from './lib/api';
+import { Clock } from 'lucide-react';
 
-type Tab = 'overview' | 'transactions' | 'review';
+type Tab = 'dashboard' | 'transactions' | 'manual-review';
 
 const tabs: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
+  { key: 'dashboard', label: 'Live Overview' },
   { key: 'transactions', label: 'Transactions' },
-  { key: 'review', label: 'Review Queue' },
+  { key: 'manual-review', label: 'Manual Review' },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
-  const [chaosLoading, setChaosLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [liveTime, setLiveTime] = useState(new Date());
 
-  const runChaosDemo = async () => {
-    setChaosLoading(true);
-    try {
-      await axios.post(
-        `${BASE_URL}/mock/simulate`,
-        { scenario: 'dropped' }
-      );
-      await axios.post(
-        `${BASE_URL}/mock/simulate`,
-        { scenario: 'surge' }
-      );
-    } catch (err) {
-      console.error('Chaos demo failed:', err);
-    } finally {
-      setChaosLoading(false);
-    }
-  };
+  // Update timestamp every 5 seconds
+  useState(() => {
+    const interval = setInterval(() => setLiveTime(new Date()), 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const renderPage = () => {
     switch (activeTab) {
-      case 'overview':
-        return <Overview />;
+      case 'dashboard':
+        return <Dashboard />;
       case 'transactions':
         return <Transactions />;
-      case 'review':
-        return <ReviewQueue />;
+      case 'manual-review':
+        return <ManualReview />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+      <header className="border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              🔀 Webhook Reconciliation Engine
-            </h1>
-            <button
-              onClick={runChaosDemo}
-              disabled={chaosLoading}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {chaosLoading ? 'Running chaos...' : '⚡ Run Chaos Demo'}
-            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Quantum<span className="text-blue-600">View</span></h1>
+              <p className="text-sm text-gray-500 mt-1">Webhook Events & Payment Gateway Reconciliation</p>
+            </div>
+            <div className="flex items-center gap-2 text-gray-600 text-sm">
+              <Clock className="h-4 w-4" />
+              <span className="font-medium">{liveTime.toLocaleTimeString()}</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Tab Navigation */}
-      <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      {/* Navigation */}
+      <nav className="border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-1">
+          <div className="flex gap-8">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition ${
+                className={`px-0 py-3 text-sm font-medium border-b-2 transition ${
                   activeTab === tab.key
-                    ? 'border-red-500 text-red-600 dark:text-red-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`}
               >
                 {tab.label}
@@ -88,7 +75,7 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {renderPage()}
       </main>
     </div>

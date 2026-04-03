@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
-import { BASE_URL } from "../lib/api";
-import { CheckCircle2, RefreshCw, X } from "lucide-react";
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { BASE_URL } from '../lib/api';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface Anomaly {
   id: string;
@@ -9,166 +9,176 @@ interface Anomaly {
   type: string;
   severity: string;
   description: string;
-  created_at: string;
   resolved_at: string | null;
-  resolution_notes: string | null;
-  transactions?: {
-    gateway: string;
-    gateway_txn_id: string;
-    amount: number;
-  };
+  created_at: string;
 }
 
 export default function ManualReview() {
-  const [items, setItems] = useState<Anomaly[] | null>(null);
-  const [resolveTarget, setResolveTarget] = useState<Anomaly | null>(null);
-  const [healing, setHealing] = useState<string | null>(null);
+  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [selectedAnomaly, setSelectedAnomaly] = useState<Anomaly | null>(null);
+  const [resolveNote, setResolveNote] = useState('');
+  const [resolving, setResolving] = useState(false);
 
-  const load = useCallback(async () => {
+  const fetchAnomalies = async () => {
     try {
       const res = await axios.get(`${BASE_URL}/anomalies`);
-      setItems(res.data.data || []);
+      setAnomalies(res.data.data || []);
     } catch (err) {
-      console.error("Failed to load manual review queue:", err);
-      setItems([]);
+      console.error('Failed to fetch anomalies:', err);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 5_000);
-    return () => clearInterval(id);
-  }, [load]);
+    fetchAnomalies();
+    const interval = setInterval(fetchAnomalies, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleHeal = async (anomaly: Anomaly) => {
-    setHealing(anomaly.id);
+  const handleResolve = async (anomaly: Anomaly) => {
+    setSelectedAnomaly(anomaly);
+    setResolveModalOpen(true);
+  };
+
+  const submitResolve = async () => {
+    if (!selectedAnomaly) return;
+
+    setResolving(true);
     try {
-      // Trigger heal by hitting the anomalies resolve endpoint
-      // In production this would call a dedicated heal endpoint
-      await axios.patch(`${BASE_URL}/anomalies/${anomaly.id}/resolve`, {
-        note: "Auto-heal triggered via dashboard",
+      await axios.patch(`${BASE_URL}/anomalies/${selectedAnomaly.id}/resolve`, {
+        note: resolveNote || 'Manually resolved',
       });
-      setItems((prev) => (prev || []).filter((a) => a.id !== anomaly.id));
+
+      // Refresh anomalies
+      await fetchAnomalies();
+      setResolveModalOpen(false);
+      setResolveNote('');
+      setSelectedAnomaly(null);
     } catch (err) {
-      console.error("Failed to trigger heal:", err);
+      console.error('Failed to resolve anomaly:', err);
     } finally {
-      setHealing(null);
+      setResolving(false);
     }
   };
 
-  const handleResolve = async (id: string, note: string) => {
-    try {
-      await axios.patch(`${BASE_URL}/anomalies/${id}/resolve`, { note });
-      setItems((prev) => (prev || []).filter((a) => a.id !== id));
-      setResolveTarget(null);
-    } catch (err) {
-      console.error("Failed to resolve anomaly:", err);
-    }
-  };
+  if (loading) {
+    return <div className="text-center py-12 text-gray-500">Loading anomalies...</div>;
+  }
 
-  if (items === null) return <div className="flex items-center justify-center h-64 text-muted-foreground">Loading…</div>;
+  const unresolvedAnomalies = anomalies.filter((a) => !a.resolved_at);
+
+  if (unresolvedAnomalies.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="flex justify-center mb-4">
+          <CheckCircle className="h-16 w-16 text-green-600" />
+        </div>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">No Anomalies</h2>
+        <p className="text-gray-500">Your ledger is healthy. All transactions are reconciled.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-foreground">Manual Review Queue</h2>
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Manual Review Queue</h2>
+        <p className="text-sm text-gray-600">{unresolvedAnomalies.length} unresolved anomalies</p>
+      </div>
 
-      {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <CheckCircle2 className="h-16 w-16 text-success mb-4" />
-          <p className="text-lg font-medium text-foreground">No anomalies – ledger is healthy</p>
-          <p className="text-sm text-muted-foreground mt-1">All transactions are reconciled.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {items.map((item) => (
-            <div key={item.id} className="bg-card border rounded-lg shadow-sm overflow-hidden flex">
-              <div className="w-1 bg-destructive shrink-0" />
-              <div className="p-4 flex-1 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-mono text-sm font-medium text-foreground">{item.transaction_id}</p>
-                    <span className="text-xs text-destructive font-medium">{item.type}</span>
+      {/* Anomaly Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {unresolvedAnomalies.map((anomaly) => (
+          <div key={anomaly.id} className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden hover:shadow-md transition">
+            {/* Red left border */}
+            <div className="h-1 bg-red-500"></div>
+
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                    <span className="text-xs font-semibold text-red-600 uppercase">{anomaly.severity}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleTimeString()}</span>
+                  <p className="text-xs font-mono text-gray-600 truncate">{anomaly.transaction_id.substring(0, 12)}...</p>
                 </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
-                {item.transactions && (
-                  <p className="text-xs text-muted-foreground">
-                    Gateway: {item.transactions.gateway} · Amount: ${(item.transactions.amount / 100).toFixed(2)}
-                  </p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setResolveTarget(item)}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                  >
-                    Resolve manually
-                  </button>
-                  <button
-                    onClick={() => handleHeal(item)}
-                    disabled={healing === item.id}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium border text-foreground hover:bg-secondary transition-colors inline-flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <RefreshCw className="h-3 w-3" /> Re-fetch from gateway
-                  </button>
-                </div>
+                <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                  {anomaly.type}
+                </span>
+              </div>
+
+              {/* Description */}
+              <p className="text-sm text-gray-700 mb-4 leading-relaxed">{anomaly.description}</p>
+
+              {/* Metadata */}
+              <div className="text-xs text-gray-500 mb-4 space-y-1">
+                <p>Created: {new Date(anomaly.created_at).toLocaleString()}</p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleResolve(anomaly)}
+                  className="flex-1 px-3 py-2 rounded border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition"
+                >
+                  Resolve Manually
+                </button>
+                <button className="flex-1 px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition">
+                  Re-fetch
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {resolveTarget && (
-        <ResolveModal
-          item={resolveTarget}
-          onResolve={(note) => handleResolve(resolveTarget.id, note)}
-          onClose={() => setResolveTarget(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function ResolveModal({ item, onResolve, onClose }: { item: Anomaly; onResolve: (note: string) => void; onClose: () => void }) {
-  const [note, setNote] = useState("Resolved via dashboard review");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    await onResolve(note);
-    setLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-foreground/20" onClick={onClose} />
-      <div className="relative bg-card border rounded-lg shadow-lg p-6 w-full max-w-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">Resolve Manually</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-secondary">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="text-sm text-muted-foreground">Add a note for <span className="font-mono">{item.transaction_id}</span>.</p>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={3}
-          className="w-full border rounded-md px-3 py-2 text-sm bg-background text-foreground resize-none"
-        />
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-md text-sm border hover:bg-secondary transition-colors text-foreground">
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="px-3 py-1.5 rounded-md text-sm bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
-          >
-            {loading ? "Saving…" : "Save"}
-          </button>
-        </div>
+          </div>
+        ))}
       </div>
+
+      {/* Resolve Modal */}
+      {resolveModalOpen && selectedAnomaly && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Resolve Anomaly</h3>
+
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">Transaction ID:</p>
+              <p className="text-xs font-mono text-gray-900 mb-4">{selectedAnomaly.transaction_id}</p>
+
+              <p className="text-sm text-gray-600 mb-2">Issue:</p>
+              <p className="text-sm text-gray-900 mb-4">{selectedAnomaly.description}</p>
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">Resolution Note</label>
+              <textarea
+                value={resolveNote}
+                onChange={(e) => setResolveNote(e.target.value)}
+                placeholder="Document the resolution action..."
+                className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+              ></textarea>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setResolveModalOpen(false)}
+                disabled={resolving}
+                className="flex-1 px-4 py-2 rounded border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitResolve}
+                disabled={resolving}
+                className="flex-1 px-4 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {resolving ? 'Resolving...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
