@@ -125,111 +125,127 @@ export default function Dashboard() {
   }, []);
 
   if (loading || !metrics) {
-    return <div className="text-center py-12 text-gray-500">Loading dashboard...</div>;
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="metric-card">
+            <div className="skeleton h-4 w-24 rounded mb-3"></div>
+            <div className="skeleton h-10 w-32 rounded mb-2"></div>
+            <div className="skeleton h-3 w-20 rounded"></div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   const isDriftCritical = metrics.driftRate > 5;
   const hasManualQueue = metrics.openAnomalies > 0;
 
+  const getDriftStatus = () => {
+    if (metrics.driftRate > 5) return { text: 'Critical - Review needed', color: '#EF4444', bg: '#FEF2F2', border: '#EF4444' };
+    if (metrics.driftRate > 2) return { text: 'Warning - Monitor closely', color: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B' };
+    return { text: 'Healthy', color: '#22C55E', bg: '#F0FDF4', border: '#22C55E' };
+  };
+
+  const driftStatus = getDriftStatus();
+
   return (
-    <div className="space-y-8">
-      {/* Metric Cards */}
+    <div className="space-y-6">
+      {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Drift Rate */}
-        <div className={`rounded-lg border shadow-sm p-6 ${isDriftCritical ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'}`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Drift Rate</span>
-            <TrendingDown className={`h-5 w-5 ${isDriftCritical ? 'text-red-600' : 'text-green-600'}`} />
+        <div className="metric-card" style={{ background: driftStatus.bg, borderColor: driftStatus.border }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-[#111827]">Drift Rate</span>
+            <TrendingDown style={{ color: driftStatus.color }} className="h-5 w-5" />
           </div>
-          <p className={`text-3xl font-bold ${isDriftCritical ? 'text-red-600' : 'text-green-600'}`}>
+          <p className="metric-value mb-2" style={{ color: driftStatus.color }}>
             {metrics.driftRate.toFixed(2)}%
           </p>
-          <p className="text-xs text-gray-500 mt-2">
-            {isDriftCritical ? 'Critical - Review needed' : 'Healthy'}
+          <p className="text-xs font-medium" style={{ color: driftStatus.color }}>
+            {driftStatus.text}
           </p>
         </div>
 
         {/* Heal Success Rate */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Heal Success Rate</span>
-            <Heart className="h-5 w-5 text-green-600" />
+        <div className="metric-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-[#111827]">Heal Success Rate</span>
+            <Heart className="h-5 w-5" style={{ color: '#22C55E' }} />
           </div>
-          <p className="text-3xl font-bold text-green-600">
+          <p className="metric-value mb-2" style={{ color: '#22C55E' }}>
             {metrics.healSuccessRate.toFixed(2)}%
           </p>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs font-medium text-[#6B7280]">
             {metrics.healSuccessRate >= 90 ? 'Excellent' : 'Monitor'}
           </p>
         </div>
 
         {/* Webhooks */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Webhooks (60 min)</span>
-            <Webhook className="h-5 w-5 text-blue-600" />
+        <div className="metric-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-[#111827]">Webhooks (60 min)</span>
+            <Webhook className="h-5 w-5" style={{ color: '#0EA5E9' }} />
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="metric-value mb-2" style={{ color: '#111827' }}>
             {(metrics.totalWebhooks || 0).toLocaleString()}
           </p>
-          <p className="text-xs text-gray-500 mt-2">Events received</p>
+          <p className="text-xs font-medium text-[#6B7280]">Events received</p>
         </div>
 
-        {/* Manual Queue */}
-        <div
-          className={`rounded-lg border shadow-sm p-6 ${hasManualQueue ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-white'}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Open Anomalies</span>
-            <AlertTriangle className={`h-5 w-5 ${hasManualQueue ? 'text-amber-600' : 'text-gray-400'}`} />
+        {/* Open Anomalies */}
+        <div className="metric-card" style={{ background: hasManualQueue ? '#FFFBEB' : '#F0FDF4', borderColor: hasManualQueue ? '#F59E0B' : '#22C55E' }}>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-[#111827]">Open Anomalies</span>
+            <AlertTriangle className="h-5 w-5" style={{ color: hasManualQueue ? '#F59E0B' : '#22C55E' }} />
           </div>
-          <p className={`text-3xl font-bold ${hasManualQueue ? 'text-amber-600' : 'text-gray-600'}`}>
+          <p className="metric-value mb-2" style={{ color: hasManualQueue ? '#F59E0B' : '#22C55E' }}>
             {metrics.openAnomalies}
           </p>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs font-medium" style={{ color: hasManualQueue ? '#F59E0B' : '#22C55E' }}>
             {hasManualQueue ? 'Needs review' : 'All resolved'}
           </p>
         </div>
 
-        {/* Recovery Rate */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">AI Recovery Rate</span>
-            <ShieldCheck className="h-5 w-5 text-purple-600" />
+        {/* AI Recovery Rate */}
+        <div className="metric-card">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-[#111827]">AI Recovery Rate</span>
+            <ShieldCheck className="h-5 w-5" style={{ color: '#6366F1' }} />
           </div>
-          <p className="text-3xl font-bold text-purple-600">
+          <p className="metric-value mb-2" style={{ color: '#6366F1' }}>
             {metrics.healStats?.recoveryRate.toFixed(1) ?? 0}%
           </p>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs font-medium text-[#6B7280]">
             {metrics.healStats?.totalAgentInterventions ?? 0} interventions
           </p>
         </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Drift Rate Trend */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Drift Rate Trend (last 20 min)</h3>
+        <div className="chart-card">
+          <h3 className="text-base font-semibold text-[#111827] mb-4">Drift Rate Trend</h3>
           {driftHistory.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 text-sm">
+            <div className="flex items-center justify-center h-[250px] text-[#6B7280] text-sm">
               Collecting drift data... snapshots recorded every 10 seconds.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={driftHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="timestamp" tick={{ fontSize: 10 }} stroke="#9ca3af" angle={-30} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" label={{ value: 'Drift %', position: 'insideLeft', offset: -5 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="timestamp" tick={{ fontSize: 10 }} stroke="#9CA3AF" angle={-30} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 12 }} stroke="#9CA3AF" label={{ value: 'Drift %', position: 'insideLeft', offset: -5 }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
-                  labelStyle={{ color: '#111827' }}
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 4px 25px rgba(0,0,0,0.12)' }}
+                  labelStyle={{ color: '#111827', fontWeight: 600 }}
                   formatter={(value: number) => [`${value.toFixed(1)}%`, 'Drift Rate']}
                 />
                 <Line
                   type="monotone"
                   dataKey="driftRate"
-                  stroke={isDriftCritical ? '#ef4444' : '#10b981'}
+                  stroke={isDriftCritical ? '#EF4444' : '#22C55E'}
                   strokeWidth={2}
                   dot={false}
                   name="Drift %"
@@ -239,61 +255,71 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Webhook Volume by Gateway */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Transaction States</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={webhookVolume}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="state" tick={{ fontSize: 12 }} stroke="#9ca3af" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}
-                labelStyle={{ color: '#111827' }}
-              />
-              <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Transactions">
-                {webhookVolume.map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        {/* Transaction States */}
+        <div className="chart-card">
+          <h3 className="text-base font-semibold text-[#111827] mb-4">Transaction States</h3>
+          {webhookVolume.length === 0 ? (
+            <div className="flex items-center justify-center h-[250px] text-[#6B7280] text-sm">
+              No transaction data available
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={webhookVolume}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="state" tick={{ fontSize: 12 }} stroke="#9CA3AF" />
+                <YAxis tick={{ fontSize: 12 }} stroke="#9CA3AF" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 4px 25px rgba(0,0,0,0.12)' }}
+                  labelStyle={{ color: '#111827', fontWeight: 600 }}
+                />
+                <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Transactions">
+                  {webhookVolume.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
-      {/* Healer Audit Log + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Audit Log + Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* AI Agent Audit Log */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-purple-600" />
+        <div className="log-panel">
+          <h3 className="text-base font-semibold text-[#111827] mb-4 flex items-center gap-2">
+            <Shield className="h-5 w-5" style={{ color: '#6366F1' }} />
             AI Agent Audit Log
           </h3>
           {healerHistory.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">No agent interventions yet.</p>
+            <div className="flex items-center justify-center h-[200px] text-[#6B7280] text-sm">
+              No agent interventions yet.
+            </div>
           ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
               {healerHistory.slice(0, 15).map((entry: any) => (
-                <div key={entry.id} className="text-xs border-b border-gray-100 pb-3 last:border-0">
-                  <div className="flex items-center justify-between mb-1">
+                <div key={entry.id} className="text-xs border-b border-[#E5E7EB] pb-3 last:border-0">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-block px-2 py-0.5 rounded-full font-medium ${
-                        entry.outcome === 'healed' ? 'bg-green-100 text-green-700' :
-                        entry.outcome === 'suppressed' ? 'bg-amber-100 text-amber-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
+                      <span
+                        className="inline-block px-2.5 py-1 rounded-full font-semibold text-[10px] tracking-wide"
+                        style={{
+                          background: entry.outcome === 'healed' ? '#DCFCE7' : entry.outcome === 'suppressed' ? '#FEF3C7' : '#DBEAFE',
+                          color: entry.outcome === 'healed' ? '#166534' : entry.outcome === 'suppressed' ? '#92400E' : '#1E40AF',
+                        }}
+                      >
                         {entry.outcome === 'healed' ? 'HEALED_BY_AI' :
                          entry.outcome === 'suppressed' ? 'SUPPRESSED' : 'PROCESSED'}
                       </span>
-                      <span className="font-mono text-gray-600">{entry.gateway_txn_id}</span>
+                      <span className="font-mono text-[#6B7280]">{entry.gateway_txn_id}</span>
                     </div>
-                    <span className="text-gray-500">{entry.created_at}</span>
+                    <span className="text-[#6B7280] tabular-nums">{entry.created_at}</span>
                   </div>
                   {entry.actions && entry.actions.length > 0 && (
-                    <p className="text-gray-700 mt-1">{entry.actions.join(' → ')}</p>
+                    <p className="text-[#111827] mt-1.5 leading-relaxed">{entry.actions.join(' → ')}</p>
                   )}
                   {entry.bridge_events > 0 && (
-                    <p className="text-gray-500 mt-1">{entry.bridge_events} bridge event(s) synthesized</p>
+                    <p className="text-[#6B7280] mt-1">{entry.bridge_events} bridge event(s) synthesized</p>
                   )}
                 </div>
               ))}
@@ -302,19 +328,24 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Activity */}
-        <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Recent Activity</h3>
+        <div className="log-panel">
+          <h3 className="text-base font-semibold text-[#111827] mb-4 flex items-center gap-2">
+            <TrendingDown className="h-5 w-5" style={{ color: '#0EA5E9' }} />
+            Recent Activity
+          </h3>
           {healActivity.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">No recent activity. Ledger is healthy.</p>
+            <div className="flex items-center justify-center h-[200px] text-[#6B7280] text-sm">
+              No recent activity. Ledger is healthy.
+            </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-[#E5E7EB]">
               {healActivity.map((activity) => (
                 <div key={activity.id} className="py-3 flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{activity.description}</p>
-                    <p className="text-xs text-gray-500 mt-1">{activity.transaction_id}</p>
+                  <div className="flex-1 pr-4">
+                    <p className="text-sm font-medium text-[#111827]">{activity.description}</p>
+                    <p className="text-xs text-[#6B7280] mt-1 font-mono">{activity.transaction_id}</p>
                   </div>
-                  <span className="text-xs text-gray-500 whitespace-nowrap ml-4">
+                  <span className="text-xs text-[#6B7280] whitespace-nowrap tabular-nums">
                     {new Date(activity.created_at).toLocaleTimeString()}
                   </span>
                 </div>
