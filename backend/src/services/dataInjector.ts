@@ -1,0 +1,243 @@
+import axios from 'axios';
+
+type InjectorScenario =
+  | 'normal'
+  | 'duplicate'
+  | 'out_of_order'
+  | 'dropped'
+  | 'invalid_payload'
+  | 'gateway_outage'
+  | 'state_conflict';
+
+interface InjectorConfig {
+  enabled: boolean;
+  intervalMs: number; // How often to inject a batch
+  batchSize: number; // How many transactions per batch
+  eventSequence: string[]; // Event types to fire in order
+  scenarioWeights: Record<InjectorScenario, number>; // Relative probability per scenario
+}
+
+const DEFAULT_CONFIG: InjectorConfig = {
+  enabled: false,
+  intervalMs: 5000, // Inject a batch every 5 seconds
+  batchSize: 3, // 3 transactions per batch
+  eventSequence: [
+    'payment.created',
+    'payment.authorized',
+    'payment.captured',
+  ],
+  scenarioWeights: {
+    normal: 92,
+    duplicate: 2,
+    out_of_order: 2,
+    dropped: 2,
+    invalid_payload: 0,
+    gateway_outage: 1,
+    state_conflict: 1,
+  },
+};
+
+let injectorInterval: NodeJS.Timeout | null = null;
+let currentConfig: InjectorConfig = { ...DEFAULT_CONFIG };
+
+/**
+ * Start the continuous data injector
+ * Periodically fires synthetic Razorpay webhooks
+ */
+export function startDataInjector(config: Partial<InjectorConfig> = {}): void {
+  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  currentConfig = finalConfig;
+
+  if (!finalConfig.enabled) {
+    console.log('Data injector is disabled');
+    return;
+  }
+
+  if (injectorInterval) {
+    clearInterval(injectorInterval);
+    injectorInterval = null;
+  }
+
+  console.log(
+    `Starting data injector: batches of ${finalConfig.batchSize} every ${finalConfig.intervalMs}ms`
+  );
+
+  injectorInterval = setInterval(async () => {
+    await injectBatch(finalConfig);
+  }, finalConfig.intervalMs);
+}
+
+/**
+ * Stop the data injector
+ */
+export function stopDataInjector(): void {
+  if (injectorInterval) {
+    clearInterval(injectorInterval);
+    injectorInterval = null;
+    console.log('Data injector stopped');
+  }
+}
+
+/**
+ * Inject a batch of synthetic transactions
+ */
+async function injectBatch(config: InjectorConfig): Promise<void> {
+  const selfUrl = process.env.SELF_URL ?? 'http://127.0.0.1:3000';
+  const webhookUrl = `${selfUrl}/webhook/razorpay`;
+
+  for (let i = 0; i < config.batchSize; i++) {
+    const scenario = pickScenario(config.scenarioWeights);
+    await injectScenario(webhookUrl, config, scenario);
+
+    // Small delay between transactions in the batch (200ms)
+    await sleep(200);
+  }
+}
+
+async function injectScenario(
+  webhookUrl: string,
+  config: InjectorConfig,
+  scenario: InjectorScenario
+): Promise<void> {
+  const baseTxnId = makeTxnId();
+  const txnId =
+    scenario === 'gateway_outage'
+      ? `${baseTxnId}503`
+      : scenario === 'state_conflict'
+      ? `${baseTxnId}conflict`
+      : baseTxnId;
+
+  const send = async (eventType: string, payloadOverride?: any) => {
+    const payload = payloadOverride ?? makePayload(txnId, eventType);
+    try {
+      const res = await axios.post(webhookUrl, payload, { timeout: 5000, validateStatus: () => true });
+      console.log(`[DataInjector] ${scenario} -> ${eventType} for ${txnId} (status ${res.status})`);
+    } catch (err: any) {
+      console.error(`[DataInjector] ${scenario} failed for ${txnId}:`, err.message);
+    }
+  };
+
+  if (scenario === 'normal') {
+    for (const eventType of config.eventSequence) {
+      await send(eventType);
+      await sleep(100);
+    }
+    return;
+  }
+
+  if (scenario === 'duplicate') {
+    // A realistic duplicate is usually a retry of a delivery, often on final event.
+    await send('payment.created');
+    await send('payment.authorized');
+    await send('payment.captured');
+    await sleep(150);
+    await send('payment.captured');
+    return;
+  }
+
+  if (scenario === 'out_of_order') {
+    // Slightly out-of-order arrival while still plausible.
+    await send('payment.authorized');
+    await send('payment.created');
+    await send('payment.captured');
+    return;
+  }
+
+  if (scenario === 'dropped') {
+    // A common real-world drop: missing intermediate event.
+    await send('payment.created');
+    await send('payment.captured');
+    return;
+  }
+
+  if (scenario === 'invalid_payload') {
+    await send('payment.created', {
+      event: 'payment.created',
+      payload: {
+        payment: {
+          entity: {
+            // Deliberately omit id to test payload validation path
+            amount: generateRandomAmount(),
+            currency: 'INR',
+            created_at: Math.floor(Date.now() / 1000),
+          },
+        },
+      },
+    });
+    return;
+  }
+
+  // These scenarios intentionally force the healer to hit mock edge cases.
+  if (scenario === 'gateway_outage' || scenario === 'state_conflict') {
+    await send('payment.captured');
+  }
+}
+
+function makeTxnId(): string {
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 9).toUpperCase();
+  return `pay_INJ${timestamp}${randomId}`;
+}
+
+function makePayload(txnId: string, eventType: string): any {
+  return {
+    event: eventType,
+    payload: {
+      payment: {
+        entity: {
+          id: txnId,
+          amount: generateRandomAmount(),
+          currency: 'INR',
+          created_at: Math.floor(Date.now() / 1000),
+        },
+      },
+    },
+  };
+}
+
+function pickScenario(weights: Record<InjectorScenario, number>): InjectorScenario {
+  const entries = Object.entries(weights) as Array<[InjectorScenario, number]>;
+  const total = entries.reduce((sum, [, value]) => sum + Math.max(0, value), 0);
+
+  if (total <= 0) {
+    return 'normal';
+  }
+
+  let cursor = Math.random() * total;
+  for (const [scenario, weight] of entries) {
+    cursor -= Math.max(0, weight);
+    if (cursor <= 0) {
+      return scenario;
+    }
+  }
+
+  return 'normal';
+}
+
+/**
+ * Generate a random transaction amount (realistic payment amounts)
+ */
+function generateRandomAmount(): number {
+  const amounts = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000];
+  return amounts[Math.floor(Math.random() * amounts.length)] * 100; // Convert to paise
+}
+
+/**
+ * Utility sleep function
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Get injector status
+ */
+export function getInjectorStatus(): {
+  active: boolean;
+  config: InjectorConfig;
+} {
+  return {
+    active: injectorInterval !== null,
+    config: currentConfig,
+  };
+}
