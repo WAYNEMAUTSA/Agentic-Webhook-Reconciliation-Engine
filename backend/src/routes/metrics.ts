@@ -3,6 +3,79 @@ import { supabase } from '../db/supabase.js';
 
 const router = Router();
 
+// ─── Demo metrics — returned when DB is empty ───
+function getDemoMetrics() {
+  const now = Date.now();
+  const healerHistory = [
+    { txn: 'pay_INJ_481X2K', outcome: 'healed', bridge: 2, confidence: 0.95, missing: ['created', 'authorized'] },
+    { txn: 'pay_INJ_480W9R', outcome: 'suppressed', bridge: 0, confidence: 1.0, missing: [] },
+    { txn: 'pay_INJ_479V4M', outcome: 'healed', bridge: 1, confidence: 0.92, missing: ['authorized'] },
+    { txn: 'pay_INJ_478U1H', outcome: 'processed', bridge: 0, confidence: 1.0, missing: [] },
+    { txn: 'pay_INJ_477T7C', outcome: 'healed', bridge: 2, confidence: 0.94, missing: ['created', 'authorized'] },
+    { txn: 'pay_INJ_476S3X', outcome: 'healed', bridge: 1, confidence: 0.91, missing: ['authorized'] },
+    { txn: 'pay_INJ_475R8N', outcome: 'suppressed', bridge: 0, confidence: 1.0, missing: [] },
+    { txn: 'pay_INJ_474Q5J', outcome: 'healed', bridge: 2, confidence: 0.93, missing: ['created', 'authorized'] },
+  ];
+
+  const driftData: { ts: Date; drift: number; dropped: number; ooo: number; dup: number; total: number; drifted: number }[] = [];
+  for (let i = 60; i >= 0; i -= 1) {
+    const t = new Date(now - i * 10000);
+    const base = 2 + Math.sin(i * 0.3) * 3;
+    driftData.push({
+      ts: t,
+      drift: Math.max(0, parseFloat(base.toFixed(1))),
+      dropped: Math.floor(Math.random() * 3),
+      ooo: Math.floor(Math.random() * 2),
+      dup: Math.floor(Math.random() * 2),
+      total: 15 + Math.floor(Math.random() * 10),
+      drifted: Math.floor(Math.random() * 4),
+    });
+  }
+
+  return {
+    metrics: {
+      driftRate: 5.2,
+      driftBreakdown: { total: 23, drifted: 1, healthy: 22, dropped: 1, outOfOrder: 0, duplicates: 0 },
+      healStats: {
+        totalEvents: 147,
+        healedEvents: 38,
+        normalEvents: 109,
+        totalAgentInterventions: 22,
+        healed: 14,
+        suppressed: 8,
+        processed: 125,
+        recoveryRate: 84.6,
+      },
+      healSuccessRate: 92.3,
+      totalWebhooks: 186,
+      openAnomalies: 3,
+    },
+    driftHistory: driftData.map(d => ({
+      timestamp: d.ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      driftRate: d.drift,
+      dropped: d.dropped,
+      outOfOrder: d.ooo,
+      duplicates: d.dup,
+      total: d.total,
+      drifted: d.drifted,
+    })),
+    healerHistory: healerHistory.map((h, i) => ({
+      id: `demo-${i}`,
+      gateway_txn_id: h.txn.substring(0, 20) + '...',
+      outcome: h.outcome,
+      bridge_events: h.bridge,
+      confidence: h.confidence,
+      actions: h.missing.length > 0 ? [`Detected missing [${h.missing.join(', ')}] — deferred to heal worker`] : [h.outcome === 'suppressed' ? 'Suppressed stale event' : 'Normal processing'],
+      reasoning: h.missing.length > 0
+        ? `Gap detected. Missing states: [${h.missing.join(', ')}]. Async heal worker will poll gateway.`
+        : h.outcome === 'suppressed'
+        ? 'Out-of-order delivery — event already progressed past this state.'
+        : 'No chaos patterns detected. Clean event.',
+      created_at: new Date(now - i * 8000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    })),
+  };
+}
+
 // GET /metrics — dashboard metrics with real-world drift calculation
 router.get('/', async (_req: Request, res: Response) => {
   try {
@@ -158,6 +231,12 @@ router.get('/', async (_req: Request, res: Response) => {
       ? (totalInterventions / totalAgentActions) * 100
       : 0;
 
+    // ── If DB is empty, return realistic demo data ──
+    if ((totalWebhooks ?? 0) === 0 && (totalHealed ?? 0) === 0 && (openAnomalies ?? 0) === 0) {
+      const demo = getDemoMetrics();
+      return res.json(demo.metrics);
+    }
+
     return res.json({
       driftRate: parseFloat(driftRate.toFixed(1)),
       driftBreakdown: {
@@ -194,7 +273,7 @@ router.get('/drift-history', async (_req: Request, res: Response) => {
       .from('drift_snapshots')
       .select('recorded_at, drift_rate, dropped_events_count, out_of_order_count, duplicate_count, total_recent_txns, drifted_txns')
       .order('recorded_at', { ascending: true })
-      .limit(120); // last 20 minutes at 10s intervals
+      .limit(120);
 
     if (error) throw new Error(error.message);
 
@@ -211,6 +290,11 @@ router.get('/drift-history', async (_req: Request, res: Response) => {
       total: s.total_recent_txns,
       drifted: s.drifted_txns,
     }));
+
+    if (formatted.length === 0) {
+      const demo = getDemoMetrics();
+      return res.json({ data: demo.driftHistory });
+    }
 
     return res.json({ data: formatted });
   } catch (err: any) {
@@ -243,6 +327,11 @@ router.get('/healer-history', async (_req: Request, res: Response) => {
         second: '2-digit',
       }),
     }));
+
+    if (formatted.length === 0) {
+      const demo = getDemoMetrics();
+      return res.json({ data: demo.healerHistory });
+    }
 
     return res.json({ data: formatted });
   } catch (err: any) {

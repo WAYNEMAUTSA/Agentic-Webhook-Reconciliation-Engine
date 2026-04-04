@@ -35,7 +35,7 @@ router.get('/', async (_req: Request, res: Response) => {
       query = query.eq('gateway', _req.query.gateway);
     }
 
-    const { data: transactions, error } = await query;
+    const { data: transactions, error, count } = await query;
 
     if (error) {
       return res.status(500).json({ error: error.message });
@@ -43,7 +43,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
     return res.json({
       data: transactions,
-      total: transactions ? transactions.length : 0,
+      total: count ?? 0,
       page,
     });
   } catch (err: any) {

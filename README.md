@@ -2,6 +2,8 @@
 
 A real-time dashboard and automation engine for monitoring, reconciling, and healing webhook-driven payment transactions. It detects anomalies (dropped events, state conflicts, gateway outages), runs auto-heal workflows via a BullMQ queue, provides fraud detection for replay attacks, and offers a visual review queue for manual intervention.
 
+![Architecture Flowchart](flowchart.jpeg)
+
 ## ✨ Key Features
 
 - **Real-Time Drift Detection**: Monitors transaction lifecycle gaps (dropped, out-of-order, duplicate events)
@@ -310,9 +312,52 @@ Each scenario fires webhooks to `/webhook/razorpay` and returns the count of web
 
 ## Testing & Data Injection
 
-### Option 1: Random Injector (Recommended for Testing)
+### 🎓 Demo for Judges — Step by Step
 
-The random injector automatically cycles through different scenarios, including **fraud replay attacks** (~10% of batches):
+Each profile showcases a different capability. Switch between them live during your demo.
+
+#### Step 1: Start the app
+```bash
+npm run dev
+```
+Open **http://localhost:8080** in your browser. Show the **Live Overview** tab.
+
+#### Step 2: Normal Traffic (clean payments flowing in)
+```bash
+curl -X POST http://localhost:3000/injector/start -H "Content-Type: application/json" -d '{"profile": "normal-only"}'
+```
+**Say:** *"Here we see clean payment transactions — created → authorized → captured — flowing through the system in real time."*
+Watch: **Live Overview** tab shows transactions appearing, 0% drift, 0 anomalies.
+
+#### Step 3: Balanced Traffic (real-world mix)
+```bash
+curl -X POST http://localhost:3000/injector/start -H "Content-Type: application/json" -d '{"profile": "balanced"}'
+```
+**Say:** *"Now we simulate real-world traffic — 70% normal, plus some duplicates, out-of-order events, and dropped events. The AI auto-healer catches these."*
+Watch: **Live Overview** — drift rate changes slightly, AI Recovery Rate shows healing activity.
+
+#### Step 4: Chaos Mode (stress test)
+```bash
+curl -X POST http://localhost:3000/injector/start -H "Content-Type: application/json" -d '{"profile": "chaos"}'
+```
+**Say:** *"This is chaos mode — 85% anomalous traffic. Out-of-order events, dropped events, gateway outages, state conflicts. The system detects every anomaly and queues heal jobs."*
+Watch: **AI Review** tab — anomalies appear and get auto-resolved. Drift rate spikes.
+
+#### Step 5: Fraud Detection (security showcase)
+```bash
+curl -X POST http://localhost:3000/injector/start -H "Content-Type: application/json" -d '{"profile": "fraud"}'
+```
+**Say:** *"Now we simulate replay attacks — a malicious actor captures and replays webhook events with forged headers. The fraud detection middleware calculates a risk score and BLOCKS them in real time."*
+Watch: **Security** tab — BLOCKED events appear within seconds with risk scores, flagged headers, and IP addresses.
+
+#### Step 6: Stop injection
+```bash
+curl -X POST http://localhost:3000/injector/stop
+```
+
+### Option 2: Continuous Random Injector
+
+The random injector automatically cycles through different scenarios:
 
 ```bash
 cd backend
@@ -325,19 +370,12 @@ Profiles:
 | Profile | Description |
 |---|---|
 | `realistic` | Mixed normal and anomalous traffic (default) |
-| `balanced` | Equal distribution of scenarios |
-| `chaos` | High rate of dropped and out-of-order events |
+| `balanced` | Real-world mix: 70% normal + anomalies |
+| `chaos` | 85% anomalous traffic — stress test |
 | `normal-only` | Clean transaction flow only |
-| `fraud` | **70% fraud replay** — heavy replay attack simulation for security dashboard testing |
+| `fraud` | **100% fraud replay** — every injection triggers fraud detection |
 
-Start fraud mode:
-```bash
-curl -X POST http://localhost:3000/injector/start \
-  -H "Content-Type: application/json" \
-  -d '{"profile": "fraud"}'
-```
-
-### Option 2: One-Time Test Data Injection
+### Option 3: One-Time Test Data Injection
 
 Inject a batch of test data including transactions, events, anomalies, and audit log entries:
 
@@ -353,7 +391,7 @@ This creates:
 - 5 open anomalies for testing the review queue
 - 8 heal jobs with various statuses
 
-### Option 3: Manual Testing
+### Option 4: Manual Testing
 
 **Resolve an anomaly:**
 ```bash
@@ -380,7 +418,7 @@ After injecting data, refresh the dashboard to see:
 - **Drift Rate** changes based on dropped/out-of-order events
 - **AI Recovery Rate** increases as anomalies are resolved
 - **Open Anomalies** count decreases on resolution
-- **Security Dashboard** populates with fraud replay entries (every ~10th batch)
+- **Security Dashboard** populates with fraud replay entries (use `fraud` profile)
 - **AI Agent Audit Log** shows detailed reasoning for each action
 
 The dashboard auto-refreshes every 10 seconds. Security tab polls every 3 seconds.
@@ -482,3 +520,4 @@ The security dashboard only logs **duplicate webhook attempts**. First-time even
 1. Start the fraud injection mode: `POST /injector/start` with `{"profile": "fraud"}`
 2. Or send the same webhook twice to the same transaction ID
 3. The second attempt triggers fraud detection → logs to `security_logs` → appears on the dashboard
+

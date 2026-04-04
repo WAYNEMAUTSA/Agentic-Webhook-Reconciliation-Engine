@@ -10,6 +10,16 @@ router.post('/razorpay', fraudDetectionMiddleware, async (req: Request, res: Res
   try {
     const body = req.body;
 
+    // Attach HTTP request headers to body so they persist in raw_payload for fraud detection
+    if (!body._request_headers) {
+      body._request_headers = {
+        'x-razorpay-signature': req.headers['x-razorpay-signature'] ?? '',
+        'x-forwarded-for': (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? '',
+        'user-agent': req.headers['user-agent'] ?? '',
+        'x-request-id': req.headers['x-request-id'] ?? '',
+      };
+    }
+
     // Extract context from Razorpay payload (handles nested or flat)
     const ctx = extractRazorpayContext(body);
 

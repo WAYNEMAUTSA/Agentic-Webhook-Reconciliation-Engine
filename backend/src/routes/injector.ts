@@ -13,23 +13,23 @@ function getProfileConfig(profile?: InjectorProfile) {
   if (profile === 'fraud') {
     return {
       intervalMs: 2000,
-      batchSize: 2,
+      batchSize: 1,
       scenarioWeights: {
-        normal: 20,
-        duplicate: 10,
+        normal: 0,
+        duplicate: 0,
         out_of_order: 0,
         dropped: 0,
         invalid_payload: 0,
         gateway_outage: 0,
         state_conflict: 0,
-        fraud_replay: 70, // Heavy fraud injection
+        fraud_replay: 100, // 100% fraud replay for demo
       },
     };
   }
 
   if (profile === 'normal-only') {
     return {
-      intervalMs: 5000,
+      intervalMs: 3000,
       batchSize: 2,
       scenarioWeights: {
         normal: 100,
@@ -46,16 +46,16 @@ function getProfileConfig(profile?: InjectorProfile) {
 
   if (profile === 'balanced') {
     return {
-      intervalMs: 4000,
+      intervalMs: 3000,
       batchSize: 2,
       scenarioWeights: {
-        normal: 85,
-        duplicate: 4,
-        out_of_order: 4,
-        dropped: 4,
+        normal: 70,
+        duplicate: 8,
+        out_of_order: 7,
+        dropped: 7,
         invalid_payload: 0,
-        gateway_outage: 2,
-        state_conflict: 1,
+        gateway_outage: 4,
+        state_conflict: 4,
         fraud_replay: 0,
       },
     };
@@ -63,11 +63,11 @@ function getProfileConfig(profile?: InjectorProfile) {
 
   if (profile === 'chaos') {
     return {
-      intervalMs: 3000,
+      intervalMs: 2000,
       batchSize: 3,
       scenarioWeights: {
-        normal: 20,
-        duplicate: 15,
+        normal: 15,
+        duplicate: 20,
         out_of_order: 20,
         dropped: 20,
         invalid_payload: 5,
@@ -78,19 +78,19 @@ function getProfileConfig(profile?: InjectorProfile) {
     };
   }
 
-  // default realistic profile
+  // default realistic profile — production-like mix
   return {
-    intervalMs: 5000,
+    intervalMs: 4000,
     batchSize: 2,
     scenarioWeights: {
-      normal: 92,
-      duplicate: 2,
-      out_of_order: 2,
-      dropped: 2,
+      normal: 85,
+      duplicate: 4,
+      out_of_order: 3,
+      dropped: 3,
       invalid_payload: 0,
-      gateway_outage: 1,
-      state_conflict: 1,
-      fraud_replay: 0,
+      gateway_outage: 2,
+      state_conflict: 2,
+      fraud_replay: 1,
     },
   };
 }

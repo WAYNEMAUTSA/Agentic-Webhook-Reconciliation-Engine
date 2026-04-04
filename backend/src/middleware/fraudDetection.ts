@@ -170,26 +170,39 @@ async function findOriginalEvent(
   gatewayTxnId: string,
   eventType: string
 ): Promise<DuplicateInfo | null> {
-  // Find any existing webhook_events for this transaction + event type
-  const { data: events } = await supabase
+  // Find existing webhook_events for this specific transaction + event type
+  const { data: events, error } = await supabase
     .from('webhook_events')
     .select('gateway_timestamp, raw_payload, created_at')
+    .eq('gateway_txn_id', gatewayTxnId)
     .eq('event_type', eventType)
     .order('created_at', { ascending: true })
     .limit(1);
+
+  if (error) {
+    console.error('[FraudDetection] Error querying webhook_events:', error.message);
+    return null;
+  }
 
   if (!events || events.length === 0) return null;
 
   const original = events[0];
   const payload = (original.raw_payload as Record<string, unknown>) || {};
-  const originalHeaders = (payload._original_headers as Record<string, unknown>) ||
+  // Headers are stored as _request_headers (set by webhook route) or _original_headers (legacy)
+  const originalHeaders = (payload._request_headers as Record<string, unknown>) ||
+                          (payload._original_headers as Record<string, unknown>) ||
                           (payload.original_headers as Record<string, unknown>) || {};
 
-  // Count total attempts
-  const { count: attemptCount } = await supabase
+  // Count total attempts for this specific transaction + event type
+  const { count: attemptCount, error: countError } = await supabase
     .from('webhook_events')
     .select('*', { count: 'exact', head: true })
+    .eq('gateway_txn_id', gatewayTxnId)
     .eq('event_type', eventType);
+
+  if (countError) {
+    console.error('[FraudDetection] Error counting attempts:', countError.message);
+  }
 
   return {
     originalTimestamp: original.gateway_timestamp,

@@ -35,7 +35,9 @@ export default function SecurityDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [totalLogs, setTotalLogs] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [_lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [newEntryIds, setNewEntryIds] = useState<Set<string>>(new Set());
+  const [prevTotal, setPrevTotal] = useState(0);
 
   const fetchData = useCallback(async () => {
     setRefreshing(true);
@@ -44,8 +46,20 @@ export default function SecurityDashboard() {
         axios.get(`${BASE_URL}/security/logs?limit=100`),
         axios.get(`${BASE_URL}/security/stats`),
       ]);
-      setLogs(logsRes.data.entries || []);
-      setTotalLogs(logsRes.data.pagination?.total || 0);
+      const newLogs = logsRes.data.entries || [];
+      const newTotal = logsRes.data.pagination?.total || 0;
+
+      // Detect new entries for highlight animation
+      if (newTotal > prevTotal && prevTotal > 0) {
+        const newCount = newTotal - prevTotal;
+        const newIds = new Set<string>(newLogs.slice(0, newCount).map((l: SecurityLog) => l.id));
+        setNewEntryIds(newIds);
+        setTimeout(() => setNewEntryIds(new Set()), 3000);
+      }
+      setPrevTotal(newTotal);
+
+      setLogs(newLogs);
+      setTotalLogs(newTotal);
       setStats(statsRes.data);
       setLastUpdated(new Date());
     } catch (err) {
@@ -54,7 +68,7 @@ export default function SecurityDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [prevTotal]);
 
   useEffect(() => {
     fetchData();
@@ -97,24 +111,21 @@ export default function SecurityDashboard() {
     <div className="space-y-5">
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+        <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold mb-0.5" style={{ color: textPrimary, letterSpacing: '-0.01em' }}>
             <Shield className="h-5 w-5 inline mr-1.5" style={{ color: '#6366F1' }} />
             Security Dashboard
           </h2>
-          <p className="text-sm" style={{ color: textMuted }}>
-            Fraud detection &amp; webhook integrity monitoring · {totalLogs} total events
-            {lastUpdated && (
-              <span className="ml-2" style={{ fontSize: '10px' }}>
-                · last updated {lastUpdated.toLocaleTimeString()}
-              </span>
-            )}
-            {refreshing && (
-              <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-            )}
-          </p>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+            LIVE
+          </span>
         </div>
-        <button
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium px-2 py-1 rounded" style={{ background: '#F0FDF4', color: '#16A34A' }}>
+            ▲ {totalLogs > prevTotal ? `+${totalLogs - prevTotal} new` : 'Monitoring active'}
+          </span>
+          <button
           onClick={fetchData}
           disabled={refreshing}
           className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition"
@@ -122,6 +133,7 @@ export default function SecurityDashboard() {
         >
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
+        </div>
       </div>
 
       {/* ── Stats Cards ── */}
@@ -212,14 +224,15 @@ export default function SecurityDashboard() {
           {logs.map((log) => {
             const badge = getAssessmentBadge(log.assessment);
             const isExpanded = expandedId === log.id;
+            const isNew = newEntryIds.has(log.id);
             return (
               <div
                 key={log.id}
-                className="rounded overflow-hidden transition"
+                className={`rounded overflow-hidden transition-all ${isNew ? 'animate-pulse' : ''}`}
                 style={{
-                  background: '#fff',
-                  border: `1px solid ${log.fraud_flag ? '#FECACA' : borderColor}`,
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                  background: isNew ? '#FEFCE8' : '#fff',
+                  border: `1px solid ${log.fraud_flag ? '#FECACA' : isNew ? '#FDE047' : borderColor}`,
+                  boxShadow: isNew ? '0 0 12px rgba(250,204,21,0.4)' : '0 1px 3px rgba(0,0,0,0.06)',
                 }}
               >
                 <div
@@ -236,6 +249,14 @@ export default function SecurityDashboard() {
                   >
                     {badge.label}
                   </span>
+
+                  {/* NEW indicator */}
+                  {isNew && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider" style={{ background: '#FEF08A', color: '#854D0E' }}>
+                      <span className="h-1 w-1 rounded-full bg-yellow-600 animate-ping" />
+                      NEW
+                    </span>
+                  )}
 
                   {/* Risk score bar */}
                   <div className="flex-shrink-0 w-16">

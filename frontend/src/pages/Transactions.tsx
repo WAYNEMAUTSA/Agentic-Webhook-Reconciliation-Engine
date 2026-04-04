@@ -42,6 +42,7 @@ export default function Transactions() {
   const [stateFilter, setStateFilter] = useState('');
   const [gatewayFilter, setGatewayFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const limit = 10;
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function Transactions() {
         if (gatewayFilter) params.gateway = gatewayFilter;
         const res = await axios.get(`${BASE_URL}/transactions`, { params });
         setTransactions(res.data.data || []);
+        setTotal(res.data.total ?? 0);
       } catch (err) {
         console.error('Failed to fetch transactions:', err);
       } finally {
@@ -185,10 +187,12 @@ export default function Transactions() {
           >
             Previous
           </button>
-          <span className="px-3 py-1.5 text-sm" style={{ color: textMuted }}>Page {page}</span>
+          <span className="px-3 py-1.5 text-sm" style={{ color: textMuted }}>
+            Page {page} of {Math.ceil(total / limit)} ({total} total)
+          </span>
           <button
             onClick={() => setPage((p) => p + 1)}
-            disabled={transactions.length < limit}
+            disabled={page >= Math.ceil(total / limit)}
             className="px-3 py-1.5 text-sm rounded"
             style={{ border: `1px solid ${borderColor}`, color: textSecondary }}
           >

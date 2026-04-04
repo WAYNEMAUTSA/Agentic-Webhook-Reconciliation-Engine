@@ -31,11 +31,11 @@ const DEFAULT_CONFIG: InjectorConfig = {
     normal: 55,
     duplicate: 5,
     out_of_order: 5,
-    dropped: 10,
+    dropped: 5,
     invalid_payload: 0,
-    gateway_outage: 8,
-    state_conflict: 7,
-    fraud_replay: 10, // 10% of injections are fraud replays
+    gateway_outage: 5,
+    state_conflict: 5,
+    fraud_replay: 20,
   },
 };
 
@@ -44,10 +44,14 @@ let currentConfig: InjectorConfig = { ...DEFAULT_CONFIG };
 
 /**
  * Start the continuous data injector
- * Periodically fires synthetic Razorpay webhooks
  */
 export function startDataInjector(config: Partial<InjectorConfig> = {}): void {
-  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  // Merge config but DON'T reset scenarioWeights from DEFAULT if override is provided
+  const finalConfig: InjectorConfig = {
+    ...DEFAULT_CONFIG,
+    scenarioWeights: { ...DEFAULT_CONFIG.scenarioWeights, ...(config as any).scenarioWeights },
+    ...config,
+  };
   currentConfig = finalConfig;
 
   if (!finalConfig.enabled) {
@@ -61,11 +65,16 @@ export function startDataInjector(config: Partial<InjectorConfig> = {}): void {
   }
 
   console.log(
-    `Starting data injector: batches of ${finalConfig.batchSize} every ${finalConfig.intervalMs}ms`
+    `[Injector] Starting: batches of ${finalConfig.batchSize} every ${finalConfig.intervalMs}ms | weights:`,
+    JSON.stringify(finalConfig.scenarioWeights)
   );
 
   injectorInterval = setInterval(async () => {
-    await injectBatch(finalConfig);
+    try {
+      await injectBatch(finalConfig);
+    } catch (err: any) {
+      console.error('[Injector] Batch error:', err.message);
+    }
   }, finalConfig.intervalMs);
 }
 
@@ -76,7 +85,7 @@ export function stopDataInjector(): void {
   if (injectorInterval) {
     clearInterval(injectorInterval);
     injectorInterval = null;
-    console.log('Data injector stopped');
+    console.log('[Injector] Stopped');
   }
 }
 
@@ -89,10 +98,12 @@ async function injectBatch(config: InjectorConfig): Promise<void> {
 
   for (let i = 0; i < config.batchSize; i++) {
     const scenario = pickScenario(config.scenarioWeights);
-    await injectScenario(webhookUrl, config, scenario);
-
-    // Small delay between transactions in the batch (200ms)
-    await sleep(200);
+    try {
+      await injectScenario(webhookUrl, config, scenario);
+    } catch (err: any) {
+      console.error(`[Injector] Scenario error (${scenario}):`, err.message);
+    }
+    await sleep(150);
   }
 }
 
@@ -109,108 +120,175 @@ async function injectScenario(
       ? `${baseTxnId}conflict`
       : baseTxnId;
 
-  const send = async (eventType: string, payloadOverride?: any) => {
-    const payload = payloadOverride ?? makePayload(txnId, eventType);
+  // send() posts directly to the webhook endpoint with custom HTTP headers
+  const send = async (eventType: string, customHeaders?: Record<string, string>) => {
+    const payload = makePayload(txnId, eventType);
     try {
-      const res = await axios.post(webhookUrl, payload, { timeout: 5000, validateStatus: () => true });
-      console.log(`[DataInjector] ${scenario} -> ${eventType} for ${txnId} (status ${res.status})`);
+      const res = await axios.post(webhookUrl, payload, {
+        timeout: 5000,
+        validateStatus: () => true,
+        headers: customHeaders,
+      });
+      console.log(`[Injector:${scenario}] ${eventType} → ${txnId} (HTTP ${res.status})`);
+      return res;
     } catch (err: any) {
-      console.error(`[DataInjector] ${scenario} failed for ${txnId}:`, err.message);
+      console.error(`[Injector:${scenario}] Failed ${txnId}:`, err.message);
+      throw err;
     }
   };
 
+  // ─── NORMAL ───
   if (scenario === 'normal') {
     for (const eventType of config.eventSequence) {
-      await send(eventType);
+      await send(eventType, {
+        'x-razorpay-signature': `sig_${txnId}_${eventType}`,
+        'x-forwarded-for': '192.168.1.100',
+        'user-agent': 'Razorpay-Webhook/1.0',
+      });
       await sleep(100);
     }
     return;
   }
 
+  // ─── DUPLICATE ───
   if (scenario === 'duplicate') {
-    // A realistic duplicate is usually a retry of a delivery, often on final event.
-    await send('payment.created');
-    await send('payment.authorized');
-    await send('payment.captured');
-    await sleep(150);
-    await send('payment.captured');
+    // Send full lifecycle
+    for (const eventType of config.eventSequence) {
+      await send(eventType, {
+        'x-razorpay-signature': `sig_${txnId}_${eventType}`,
+        'x-forwarded-for': '192.168.1.100',
+        'user-agent': 'Razorpay-Webhook/1.0',
+      });
+      await sleep(100);
+    }
+    // Re-send captured (duplicate) — will be caught by idempotency in chaosHealer
+    await sleep(200);
+    await send('payment.captured', {
+      'x-razorpay-signature': `sig_${txnId}_captured_retry`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
     return;
   }
 
+  // ─── OUT OF ORDER ───
   if (scenario === 'out_of_order') {
-    // Slightly out-of-order arrival while still plausible.
-    await send('payment.authorized');
-    await send('payment.created');
-    await send('payment.captured');
+    await send('payment.authorized', {
+      'x-razorpay-signature': `sig_${txnId}_authorized`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
+    await sleep(100);
+    await send('payment.created', {
+      'x-razorpay-signature': `sig_${txnId}_created`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
+    await sleep(100);
+    await send('payment.captured', {
+      'x-razorpay-signature': `sig_${txnId}_captured`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
     return;
   }
 
+  // ─── DROPPED ───
   if (scenario === 'dropped') {
-    // A common real-world drop: missing intermediate event.
-    await send('payment.created');
-    await send('payment.captured');
+    await send('payment.created', {
+      'x-razorpay-signature': `sig_${txnId}_created`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
+    await sleep(150);
+    await send('payment.captured', {
+      'x-razorpay-signature': `sig_${txnId}_captured`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    });
     return;
   }
 
+  // ─── INVALID PAYLOAD ───
   if (scenario === 'invalid_payload') {
     await send('payment.created', {
+      'x-razorpay-signature': `sig_${txnId}_created`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
+    }, );
+    // Override payload to omit 'id'
+    const badPayload = {
       event: 'payment.created',
       payload: {
         payment: {
           entity: {
-            // Deliberately omit id to test payload validation path
             amount: generateRandomAmount(),
             currency: 'INR',
             created_at: Math.floor(Date.now() / 1000),
           },
         },
       },
+    };
+    await axios.post(webhookUrl, badPayload, { timeout: 5000, validateStatus: () => true });
+    console.log(`[Injector:invalid_payload] Sent malformed payload for ${txnId}`);
+    return;
+  }
+
+  // ─── GATEWAY OUTAGE / STATE CONFLICT ───
+  if (scenario === 'gateway_outage' || scenario === 'state_conflict') {
+    await send('payment.captured', {
+      'x-razorpay-signature': `sig_${txnId}_captured`,
+      'x-forwarded-for': '192.168.1.100',
+      'user-agent': 'Razorpay-Webhook/1.0',
     });
     return;
   }
 
-  // These scenarios intentionally force the healer to hit mock edge cases.
-  if (scenario === 'gateway_outage' || scenario === 'state_conflict') {
-    await send('payment.captured');
-  }
-
-  // FRAUD REPLAY — simulates replay attacks for security dashboard testing
+  // ─── FRAUD REPLAY ───
   if (scenario === 'fraud_replay') {
     const fraudTxnId = `pay_FRAUD_${Date.now().toString().slice(-6)}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
 
-    // Phase 1: Send legitimate event first
-    const legitPayload = makePayload(fraudTxnId, 'payment.captured');
-    legitPayload._original_headers = {
-      'x-razorpay-signature': `sig_${Math.random().toString(36).substring(2, 10)}`,
-      'x-forwarded-for': '192.168.1.100',
-      'user-agent': 'Razorpay-Webhook/1.0',
-    };
-    await send('payment.captured', legitPayload);
+    // Phase 1: LEGITIMATE event
+    const legitRes = await axios.post(webhookUrl, makePayload(fraudTxnId, 'payment.captured'), {
+      timeout: 5000,
+      validateStatus: () => true,
+      headers: {
+        'x-razorpay-signature': `sig_legit_${fraudTxnId}`,
+        'x-forwarded-for': '192.168.1.100',
+        'user-agent': 'Razorpay-Webhook/1.0',
+        'content-type': 'application/json',
+      },
+    });
+    console.log(`[Injector:fraud] PHASE 1 (legit) → ${fraudTxnId} (HTTP ${legitRes.status})`);
 
-    // Phase 2: Wait a realistic delay (simulates attacker capturing and replaying later)
-    const delayMs = Math.random() > 0.5 ? 3000 : 15000; // 50% short delay, 50% long delay
-    await sleep(delayMs);
+    // Phase 2: Wait so Phase 1 is fully committed to DB
+    await sleep(1500);
 
-    // Phase 3: Send the REPLAY — same event type + txn ID but with DIFFERENT headers
-    // This triggers the fraud detection middleware
-    const replayPayload = makePayload(fraudTxnId, 'payment.captured');
-    // Deliberately change headers to simulate a replay from different source
-    replayPayload._original_headers = {
-      'x-razorpay-signature': `sig_FAKE_${Math.random().toString(36).substring(2, 10)}`, // Changed signature
-      'x-forwarded-for': '203.0.113.42', // Different IP
-      'user-agent': 'python-requests/2.31', // Different user agent
-    };
-
-    const fraudRes = await axios.post(webhookUrl, replayPayload, { timeout: 5000, validateStatus: () => true });
-    console.log(`[DataInjector] fraud_replay -> replayed ${fraudTxnId} after ${delayMs}ms (status ${fraudRes.status})`);
+    // Phase 3: REPLAY — same txn ID + event type but DIFFERENT HTTP headers
+    // The fraud detection middleware sees this as a duplicate with changed headers → BLOCK
+    const replayRes = await axios.post(webhookUrl, makePayload(fraudTxnId, 'payment.captured'), {
+      timeout: 5000,
+      validateStatus: () => true,
+      headers: {
+        'x-razorpay-signature': `sig_ATTACKER_${Math.random().toString(36).substring(2, 8)}`,
+        'x-forwarded-for': `45.${randInt(1, 254)}.${randInt(1, 254)}.${randInt(1, 254)}`,
+        'user-agent': 'python-requests/2.31',
+        'content-type': 'application/json',
+      },
+    });
+    console.log(`[Injector:fraud] PHASE 3 (replay) → ${fraudTxnId} (HTTP ${replayRes.status}) ${replayRes.status === 403 ? '✅ BLOCKED' : '❌ NOT BLOCKED'}`);
     return;
   }
 }
 
+function randInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function makeTxnId(): string {
-  const timestamp = Date.now();
-  const randomId = Math.random().toString(36).substring(2, 9).toUpperCase();
-  return `pay_INJ${timestamp}${randomId}`;
+  const ts = Date.now();
+  const r = Math.random().toString(36).substring(2, 9).toUpperCase();
+  return `pay_INJ${ts}${r}`;
 }
 
 function makePayload(txnId: string, eventType: string): any {
@@ -231,48 +309,26 @@ function makePayload(txnId: string, eventType: string): any {
 
 function pickScenario(weights: Record<InjectorScenario, number>): InjectorScenario {
   const entries = Object.entries(weights) as Array<[InjectorScenario, number]>;
-  const total = entries.reduce((sum, [, value]) => sum + Math.max(0, value), 0);
-
-  if (total <= 0) {
-    return 'normal';
-  }
+  const total = entries.reduce((sum, [, v]) => sum + Math.max(0, v), 0);
+  if (total <= 0) return 'normal';
 
   let cursor = Math.random() * total;
   for (const [scenario, weight] of entries) {
     cursor -= Math.max(0, weight);
-    if (cursor <= 0) {
-      return scenario;
-    }
+    if (cursor <= 0) return scenario;
   }
-
   return 'normal';
 }
 
-/**
- * Generate a random transaction amount (realistic enterprise payment amounts)
- */
 function generateRandomAmount(): number {
-  // Enterprise payment amounts: ₹10,000 to ₹500,000 (in paise: 1,000,000 to 50,000,000)
   const amounts = [10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000];
-  return amounts[Math.floor(Math.random() * amounts.length)] * 100; // Convert to paise
+  return amounts[Math.floor(Math.random() * amounts.length)] * 100;
 }
 
-/**
- * Utility sleep function
- */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Get injector status
- */
-export function getInjectorStatus(): {
-  active: boolean;
-  config: InjectorConfig;
-} {
-  return {
-    active: injectorInterval !== null,
-    config: currentConfig,
-  };
+export function getInjectorStatus(): { active: boolean; config: InjectorConfig } {
+  return { active: injectorInterval !== null, config: currentConfig };
 }

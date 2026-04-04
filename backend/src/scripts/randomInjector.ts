@@ -1,6 +1,6 @@
 import { randomInt } from 'crypto';
 
-const PROFILES = ['realistic', 'balanced', 'chaos', 'normal-only'] as const;
+const PROFILES = ['realistic', 'balanced', 'chaos', 'normal-only', 'fraud'] as const;
 type Profile = (typeof PROFILES)[number];
 
 const BASE_URL = process.env.BACKEND_URL ?? 'http://127.0.0.1:3000';
@@ -11,6 +11,7 @@ const PROFILE_DURATION_MS: Record<Profile, [number, number]> = {
   balanced: [10_000, 20_000],
   chaos: [8_000, 15_000],
   'normal-only': [20_000, 40_000],
+  fraud: [10_000, 20_000],
 };
 
 let active = false;
@@ -18,10 +19,10 @@ let currentProfile: Profile | null = null;
 let cycleTimer: NodeJS.Timeout | null = null;
 
 /**
- * Pick a random profile (weighted: chaos and balanced more likely for variety)
+ * Pick a random profile (weighted: chaos, balanced, and fraud more likely for variety)
  */
 function pickRandomProfile(): Profile {
-  const weights = [1, 2, 3, 1]; // realistic, balanced, chaos, normal-only
+  const weights = [1, 2, 3, 1, 2]; // realistic, balanced, chaos, normal-only, fraud
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
   for (let i = 0; i < PROFILES.length; i++) {
